@@ -39,15 +39,27 @@ jobs:
 
     env:
       SSH_PORT_DEPLOY: ${{ secrets.SSH_PORT }}
+      # Проверка через env — безопаснее для паролей со спецсимволами
+      SECRET_SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SECRET_SERVER_USER: ${{ secrets.SERVER_USER }}
+      SECRET_SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      SECRET_DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
 
     steps:
       - name: Verify deployment secrets
         run: |
           set -euo pipefail
-          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || \
-             [ -z "${{ secrets.SSH_PASSWORD }}" ] || [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
-            echo "::error::Задайте секреты: SERVER_HOST, SERVER_USER, SSH_PASSWORD, DEPLOY_PATH"
+          missing=""
+          [ -z "${SECRET_SERVER_HOST:-}" ] && missing="${missing} SERVER_HOST"
+          [ -z "${SECRET_SERVER_USER:-}" ] && missing="${missing} SERVER_USER"
+          [ -z "${SECRET_SSH_PASSWORD:-}" ] && missing="${missing} SSH_PASSWORD"
+          if [ -n "${missing}" ]; then
+            echo "::error::Не заданы repository secrets:${missing}"
+            echo "::error::GitHub → Settings → Secrets and variables → Actions → вкладка Secrets (не Variables)."
             exit 1
+          fi
+          if [ -z "${SECRET_DEPLOY_PATH:-}" ]; then
+            echo "::notice::DEPLOY_PATH не задан — используем /root/dofamy"
           fi
 
       - name: Checkout repository
@@ -91,7 +103,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-          script: mkdir -p '${{ secrets.DEPLOY_PATH }}'
+          script: mkdir -p '${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}'
 
       - name: Copy archive to remote server
         uses: appleboy/scp-action@v0.1.7
@@ -101,7 +113,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
           source: "dofamy-deploy.tgz"
-          target: ${{ secrets.DEPLOY_PATH }}
+          target: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
 
       - name: Extract and run Docker Compose
         uses: appleboy/ssh-action@v0.1.10
@@ -113,7 +125,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}'
+            DEPLOY_PATH='${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}'
             test -n "$DEPLOY_PATH"
             cd "$DEPLOY_PATH"
             find . -mindepth 1 -maxdepth 1 \
