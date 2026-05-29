@@ -6,7 +6,7 @@
 #   SSH_PASSWORD    — пароль SSH
 #   DEPLOY_PATH     — каталог на сервере (опционально, по умолчанию /root/dofamy)
 #
-# Опционально:
+#   SITE_DOMAIN     — домен для Caddy (опционально; иначе SERVER_HOST)
 #   SSH_PORT        — порт SSH, если не 22
 #
 # Сборка (EXPO_PUBLIC_* — попадают в бандл на этапе CI):
@@ -15,9 +15,7 @@
 #   EXPO_PUBLIC_DEEPSEEK_API_KEY
 #   EXPO_PUBLIC_YANDEX_IAM_TOKEN
 #
-# На сервере один раз: Docker + docker compose plugin.
-# В DEPLOY_PATH положите .env (не в git) с:
-#   SITE_DOMAIN=dofamy.example.com
+# На сервере: Docker + docker compose. .env создаётся автоматически при первом деплое.
 
 name: Build and Deploy Dofamy
 
@@ -43,15 +41,29 @@ jobs:
 
     steps:
       - name: Verify deployment secrets
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || \
-             [ -z "${{ secrets.SSH_PASSWORD }}" ]; then
-            echo "::error::Задайте секреты репозитория: SERVER_HOST, SERVER_USER, SSH_PASSWORD"
+          missing=""
+          [ -z "${SERVER_HOST}" ] && missing="${missing} SERVER_HOST"
+          [ -z "${SERVER_USER}" ] && missing="${missing} SERVER_USER"
+          [ -z "${SSH_PASSWORD}" ] && missing="${missing} SSH_PASSWORD"
+          if [ -n "${missing}" ]; then
+            echo "::error::Задайте секреты репозитория:${missing}"
+            echo "::error::Скопируйте из urbanscore: scripts/gh-set-deploy-secrets.sh (см. .env.deploy.example)"
             exit 1
           fi
           if [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
             echo "::notice::DEPLOY_PATH не задан — используем /root/dofamy"
+          fi
+          echo "SERVER_USER=${SERVER_USER}"
+          echo "SERVER_HOST длина: ${#SERVER_HOST} символов"
+          echo "SSH_PASSWORD длина: ${#SSH_PASSWORD} символов"
+          if [ "${#SSH_PASSWORD}" -lt 4 ]; then
+            echo "::warning::SSH_PASSWORD слишком короткий — возможно, секрет задан неверно"
           fi
 
       - name: Checkout repository
@@ -128,11 +140,9 @@ jobs:
             rm -f dofamy-deploy.tgz
 
             if [ ! -f .env ]; then
-              echo "::error::.env not found in ${DEPLOY_PATH}. Create ${DEPLOY_PATH}/.env on server (see .env.example in repo)."
-              if [ -f .env.example ]; then
-                echo "::notice::You can initialize with: cp ${DEPLOY_PATH}/.env.example ${DEPLOY_PATH}/.env and set SITE_DOMAIN."
-              fi
-              exit 1
+              SITE_DOMAIN='${{ secrets.SITE_DOMAIN != '' && secrets.SITE_DOMAIN || secrets.SERVER_HOST }}'
+              echo "SITE_DOMAIN=${SITE_DOMAIN}" > .env
+              echo "::notice::Создан ${DEPLOY_PATH}/.env с SITE_DOMAIN=${SITE_DOMAIN}"
             fi
 
             if ! command -v docker >/dev/null 2>&1; then
