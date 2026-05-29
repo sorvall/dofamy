@@ -1,7 +1,8 @@
 import * as Haptics from "expo-haptics";
+import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   FadeIn,
@@ -169,11 +170,11 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
   });
 
   const swipeLeftHintStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [0, 20, SWIPE_COMMIT], [0, 0.4, 1], Extrapolation.CLAMP),
+    opacity: interpolate(translateX.value, [0, 12, SWIPE_COMMIT], [0, 0.55, 1], Extrapolation.CLAMP),
   }));
 
   const swipeRightHintStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [-SWIPE_COMMIT, -20, 0], [1, 0.4, 0], Extrapolation.CLAMP),
+    opacity: interpolate(translateX.value, [0, -12, -SWIPE_COMMIT], [0, 0.55, 1], Extrapolation.CLAMP),
   }));
 
   const markDone = useCallback(() => {
@@ -184,6 +185,18 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     removeTopic(topic.id);
   }, [removeTopic, topic.id]);
+
+  const confirmSwipeDelete = useCallback(() => {
+    translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
+    Alert.alert(
+      "Удалить план?",
+      `«${topic.title}» будет убран из планов на сегодня.`,
+      [
+        { text: "Отмена", style: "cancel" },
+        { text: "Удалить", style: "destructive", onPress: swipeDeleteTopic },
+      ]
+    );
+  }, [swipeDeleteTopic, topic.title, translateX]);
 
   const openMenu = useCallback(() => {
     if (singleTapTimerRef.current) {
@@ -257,11 +270,11 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           if (x > SWIPE_COMMIT) {
             runOnJS(markDone)();
           } else if (x < -SWIPE_COMMIT) {
-            runOnJS(swipeDeleteTopic)();
+            runOnJS(confirmSwipeDelete)();
           }
           translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
         }),
-    [markDone, swipeDeleteTopic]
+    [confirmSwipeDelete, markDone]
   );
 
   const cardGestures = useMemo(() => swipeGesture, [swipeGesture]);
@@ -364,22 +377,20 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
         ) : null}
 
         <View className="overflow-hidden rounded-card border border-line bg-white">
-        <View pointerEvents="none" className="absolute inset-0 flex-row overflow-hidden">
+        <View pointerEvents="none" className="absolute inset-0 overflow-hidden rounded-card">
           <Animated.View
-            className="flex-1 justify-center pl-4"
-            style={[{ backgroundColor: "rgba(29, 158, 117, 0.92)" }, swipeLeftHintStyle]}
+            className="absolute bottom-0 left-0 top-0 w-[108px] justify-center pl-4"
+            style={[{ backgroundColor: "rgba(29, 158, 117, 0.94)" }, swipeLeftHintStyle]}
           >
             <Text style={styles.swipeHintLeft}>✓</Text>
             <Text style={styles.swipeHintLeftSub}>готово</Text>
           </Animated.View>
           <Animated.View
-            className="flex-1 items-end justify-center pr-4"
-            style={[{ backgroundColor: "rgba(250, 236, 231, 0.98)" }, swipeRightHintStyle]}
+            className="absolute bottom-0 right-0 top-0 w-[120px] items-center justify-center"
+            style={[{ backgroundColor: "#FAECE7" }, swipeRightHintStyle]}
           >
-            <Text style={[styles.swipeHintRight, styles.swipeHintRightAlign, styles.swipeDeleteIcon]}>×</Text>
-            <Text style={[styles.swipeHintRightSub, styles.swipeHintRightAlign, styles.swipeDeleteLabel]}>
-              удалить
-            </Text>
+            <MaterialIcons name="delete-outline" size={30} color="#993C1D" />
+            <Text style={styles.swipeDeleteLabel}>удалить</Text>
           </Animated.View>
         </View>
 
@@ -523,21 +534,13 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.85)",
     letterSpacing: 0.3,
   },
-  swipeHintRight: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "rgba(255,255,255,0.95)",
-  },
-  swipeHintRightSub: {
-    marginTop: 2,
-    fontSize: 13,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.9)",
-    letterSpacing: 0.3,
-  },
-  swipeHintRightAlign: {
-    textAlign: "right",
-    width: "100%",
+  swipeDeleteLabel: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#993C1D",
+    letterSpacing: 0.2,
+    textTransform: "lowercase",
   },
   popoverShadow: {
     shadowColor: "#000",
@@ -555,18 +558,6 @@ const styles = StyleSheet.create({
   },
   doneWash: {
     borderRadius: 20,
-  },
-  swipeDeleteIcon: {
-    fontSize: 32,
-    fontWeight: "300",
-    color: "#993C1D",
-  },
-  swipeDeleteLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#993C1D",
-    letterSpacing: 0.2,
-    textTransform: "lowercase",
   },
   doneBadge: {
     position: "absolute",

@@ -2,7 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, LayoutChangeEvent, Platform, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, Text, View } from "react-native";
 import { pickWebRecordingMimeType } from "../lib/webAudioWav";
 import Animated, {
   useAnimatedStyle,
@@ -105,13 +105,30 @@ export function VoiceRecorder({
   const [level, setLevel] = useState(0.2);
   const [busy, setBusy] = useState(false);
   const [webMicHint, setWebMicHint] = useState<string | null>(null);
-  const barW = useSharedValue(0);
   const levelSV = useSharedValue(0.12);
   const scale = useSharedValue(1);
 
   useEffect(() => {
-    levelSV.value = withTiming(0.12 + level * 0.88, { duration: 100 });
+    levelSV.value = withTiming(0.08 + level * 0.92, { duration: 70 });
   }, [level, levelSV]);
+
+  /** На web expo-av не отдаёт metering — живая полоска по rAF (без второго доступа к микрофону). */
+  useEffect(() => {
+    if (!isRecording || Platform.OS !== "web") return;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = now / 1000;
+      const v =
+        0.16 +
+        0.38 * Math.abs(Math.sin(t * 9.5)) +
+        0.22 * Math.abs(Math.sin(t * 4.1 + 1.2)) +
+        Math.random() * 0.14;
+      setLevel(Math.min(0.98, v));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [isRecording]);
 
   useEffect(() => {
     if (Platform.OS === "web" && !isWebMicAvailable()) {
@@ -124,15 +141,9 @@ export function VoiceRecorder({
     };
   }, []);
 
-  const onBarLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      barW.value = e.nativeEvent.layout.width;
-    },
-    [barW]
-  );
-
   const onStatusUpdate = useCallback((status: { isRecording: boolean; metering?: number }) => {
     if (!status.isRecording) return;
+    if (Platform.OS === "web") return;
     setLevel(normalizeMetering(status.metering));
   }, []);
 
@@ -212,7 +223,7 @@ export function VoiceRecorder({
   }, [mode, isRecording, stopAndFinish]);
 
   const fillStyle = useAnimatedStyle(() => ({
-    width: Math.max(8, barW.value * levelSV.value),
+    transform: [{ scaleX: Math.max(0.04, levelSV.value) }],
   }));
 
   const btnWrapStyle = useAnimatedStyle(() => ({
@@ -252,9 +263,17 @@ export function VoiceRecorder({
         <View
           className={`mb-3 h-3 overflow-hidden rounded-full ${variant === "fab" ? "w-full max-w-[340px]" : "w-full"}`}
           style={{ backgroundColor: METER_TRACK }}
-          onLayout={onBarLayout}
         >
-          <Animated.View style={fillStyle}>
+          <Animated.View
+            style={[
+              fillStyle,
+              {
+                width: "100%",
+                height: 12,
+                transformOrigin: "left center",
+              },
+            ]}
+          >
             <LinearGradient
               colors={["#F5C842", "#C9A025"]}
               start={{ x: 0, y: 0.5 }}

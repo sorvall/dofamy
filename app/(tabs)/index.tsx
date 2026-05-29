@@ -61,13 +61,7 @@ export default function TodayScreen() {
   );
 
   const onDayReport = useCallback(async () => {
-    if (topics.length === 0) {
-      Alert.alert(
-        "Пока нечего собирать",
-        "Сначала запиши план на день — появятся карточки, и отчёт сможет их учесть."
-      );
-      return;
-    }
+    if (topics.length === 0) return;
     setReportBusy(true);
     setReportText(null);
     try {
@@ -165,8 +159,10 @@ export default function TodayScreen() {
         >
           <Pressable
             onPress={() => void onDayReport()}
-            disabled={reportBusy}
-            className={`items-center justify-center rounded-[18px] bg-ink py-3.5 ${reportBusy ? "opacity-60" : "active:opacity-90"}`}
+            disabled={reportBusy || topics.length === 0}
+            className={`items-center justify-center rounded-[18px] py-3.5 ${
+              topics.length === 0 ? "bg-ink/35" : "bg-ink active:opacity-90"
+            } ${reportBusy ? "opacity-60" : ""}`}
             style={{
               shadowColor: "#000",
               shadowOffset: { width: 0, height: 6 },
