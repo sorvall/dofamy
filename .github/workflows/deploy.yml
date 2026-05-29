@@ -1,13 +1,10 @@
-# Деплой Dofamy PWA на VPS: сборка web → архив → SCP → docker compose (nginx + Caddy).
+# Деплой Dofamy PWA на VPS: сборка web → архив → SCP → docker compose (nginx).
+# HTTPS: блоки из Caddyfile.urbanscore → Caddy Urbanscore (Let's Encrypt для dofamy.ru).
 #
 # Секреты GitHub (Settings → Secrets and variables → Actions):
-#   SERVER_HOST     — IP или домен сервера
-#   SERVER_USER     — пользователь SSH (например root или deploy)
-#   SSH_PASSWORD    — пароль SSH
-#   DEPLOY_PATH     — каталог на сервере (опционально, по умолчанию /root/dofamy)
-#
-#   SITE_DOMAIN     — домен для Caddy (опционально; иначе SERVER_HOST)
-#   SSH_PORT        — порт SSH, если не 22
+#   SERVER_HOST, SERVER_USER, SSH_PASSWORD
+#   DEPLOY_PATH     — опционально, по умолчанию /root/dofamy
+#   SSH_PORT        — опционально
 #
 # Сборка (EXPO_PUBLIC_* — попадают в бандл на этапе CI):
 #   EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY
@@ -96,8 +93,7 @@ jobs:
             Dockerfile \
             docker-compose.yml \
             nginx.conf \
-            Caddyfile \
-            Caddyfile.ip \
+            Caddyfile.urbanscore \
             .env.example
           mv "${ARCHIVE_PATH}" dofamy-deploy.tgz
 
@@ -142,8 +138,7 @@ jobs:
 
             if [ ! -f .env ]; then
               echo "WEB_PORT=8082" > .env
-              echo "HTTPS_PORT=8443" >> .env
-              echo "::notice::Создан ${DEPLOY_PATH}/.env (WEB_PORT=8082, HTTPS_PORT=8443)"
+              echo "::notice::Создан ${DEPLOY_PATH}/.env. HTTPS: добавьте Caddyfile.urbanscore в Caddy Urbanscore."
             fi
 
             if ! command -v docker >/dev/null 2>&1; then
@@ -170,5 +165,4 @@ jobs:
             $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
             $COMPOSE_CMD up -d --build
             $COMPOSE_CMD ps
-            echo "::notice::Dofamy HTTP:  http://${{ secrets.SERVER_HOST }}:8082"
-            echo "::notice::Dofamy HTTPS: https://${{ secrets.SERVER_HOST }}:8443 (self-signed, для микрофона)"
+            echo "::notice::Dofamy HTTP (внутренний): http://127.0.0.1:8082 → после Caddy: https://dofamy.ru"

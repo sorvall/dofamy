@@ -1,7 +1,0 @@
-# HTTPS по IP: self-signed сертификат Caddy (Let's Encrypt на голый IP не выдаёт).
-# Откройте https://ВАШ_IP:8443 → «Дополнительно» → «Перейти на сайт» → микрофон заработает.
-
-:443 {
-    tls internal
-    reverse_proxy web:80
-}

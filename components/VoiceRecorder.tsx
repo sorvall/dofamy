@@ -81,7 +81,7 @@ function recordingStartErrorMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error);
   if (Platform.OS === "web") {
     if (typeof window !== "undefined" && !window.isSecureContext) {
-      return "Микрофон в браузере доступен только по HTTPS. Откройте https://IP:8443 (не http://IP:8082) и примите сертификат в браузере.";
+      return "Микрофон работает только по HTTPS. Откройте https://dofamy.ru (не http://IP:8082).";
     }
     if (/No media devices|NotAllowed|Permission|NotFound/i.test(msg)) {
       return "Нет доступа к микрофону. Разрешите микрофон в браузере. На iPhone нужен Safari и HTTPS.";
@@ -115,7 +115,7 @@ export function VoiceRecorder({
   useEffect(() => {
     if (Platform.OS === "web" && !isWebMicAvailable()) {
       setWebMicHint(
-        "Запись голоса — только по HTTPS: откройте https://ваш-ip:8443 и нажмите «Перейти» при предупреждении о сертификате."
+        "Запись голоса — по https://dofamy.ru. Настройте DNS и Caddy (см. Caddyfile.urbanscore в репозитории)."
       );
     }
     return () => {

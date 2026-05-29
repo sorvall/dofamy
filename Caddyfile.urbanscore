@@ -1,0 +1,13 @@
+# Скопируйте в Caddyfile Urbanscore на сервере и перезапустите: docker compose restart caddy
+#
+# DNS Timeweb (домен dofamy.ru):
+#   A  @    → 72.56.232.145
+#   A  www  → 72.56.232.145
+
+dofamy.ru {
+    reverse_proxy 127.0.0.1:8082
+}
+
+www.dofamy.ru {
+    redir https://dofamy.ru{uri}
+}
