@@ -7,7 +7,9 @@ import Animated, {
   FadeIn,
   FadeInDown,
   Easing,
+  Extrapolation,
   cancelAnimation,
+  interpolate,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -165,6 +167,14 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
       elevation: 4 + Math.min(6, drag / 25),
     };
   });
+
+  const swipeLeftHintStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(translateX.value, [0, 20, SWIPE_COMMIT], [0, 0.4, 1], Extrapolation.CLAMP),
+  }));
+
+  const swipeRightHintStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(translateX.value, [-SWIPE_COMMIT, -20, 0], [1, 0.4, 0], Extrapolation.CLAMP),
+  }));
 
   const markDone = useCallback(() => {
     setManualComplete(topic.id, true);
@@ -353,24 +363,24 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           </Animated.View>
         ) : null}
 
-        <View className="overflow-hidden rounded-card border border-line">
-        <View pointerEvents="none" className="absolute inset-0 flex-row">
-          <View
+        <View className="overflow-hidden rounded-card border border-line bg-white">
+        <View pointerEvents="none" className="absolute inset-0 flex-row overflow-hidden">
+          <Animated.View
             className="flex-1 justify-center pl-4"
-            style={{ backgroundColor: "rgba(29, 158, 117, 0.92)" }}
+            style={[{ backgroundColor: "rgba(29, 158, 117, 0.92)" }, swipeLeftHintStyle]}
           >
             <Text style={styles.swipeHintLeft}>✓</Text>
             <Text style={styles.swipeHintLeftSub}>готово</Text>
-          </View>
-          <View
+          </Animated.View>
+          <Animated.View
             className="flex-1 items-end justify-center pr-4"
-            style={{ backgroundColor: "rgba(250, 236, 231, 0.98)" }}
+            style={[{ backgroundColor: "rgba(250, 236, 231, 0.98)" }, swipeRightHintStyle]}
           >
             <Text style={[styles.swipeHintRight, styles.swipeHintRightAlign, styles.swipeDeleteIcon]}>×</Text>
             <Text style={[styles.swipeHintRightSub, styles.swipeHintRightAlign, styles.swipeDeleteLabel]}>
               удалить
             </Text>
-          </View>
+          </Animated.View>
         </View>
 
         <GestureDetector gesture={cardGestures}>
@@ -378,6 +388,7 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
             className="overflow-hidden rounded-card bg-white"
             style={[
               cardMotionStyle,
+              styles.cardSurface,
               {
                 shadowColor: "#000",
                 shadowOffset: { width: 0, height: 8 },
@@ -392,7 +403,7 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
               onPressOut={() => {
                 scale.value = withSpring(1, { damping: 14, stiffness: 260 });
               }}
-              className="px-3.5 pb-3 pt-3.5"
+              className="px-4 pb-4 pt-4"
             >
               {isDone ? (
                 <>
@@ -452,22 +463,24 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
                 )}
               </View>
 
-              <View className="mt-2.5 flex-row flex-wrap items-center gap-2.5 border-t border-line/80 pt-2.5">
-                <View className="flex-row items-center gap-1">
-                  <View
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ backgroundColor: beforeDone ? SUCCESS : DOT_OFF }}
-                  />
-                  <Text className="font-sans text-[10px] text-muted">фото до</Text>
+              <View className="mt-3 flex-row items-center justify-between gap-3 border-t border-line/80 pt-3">
+                <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-x-3 gap-y-1">
+                  <View className="flex-row items-center gap-1">
+                    <View
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: beforeDone ? SUCCESS : DOT_OFF }}
+                    />
+                    <Text className="font-sans text-[10px] text-muted">фото до</Text>
+                  </View>
+                  <View className="flex-row items-center gap-1">
+                    <View
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: afterDone ? SUCCESS : DOT_OFF }}
+                    />
+                    <Text className="font-sans text-[10px] text-muted">фото после</Text>
+                  </View>
                 </View>
-                <View className="flex-row items-center gap-1">
-                  <View
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ backgroundColor: afterDone ? SUCCESS : DOT_OFF }}
-                  />
-                  <Text className="font-sans text-[10px] text-muted">фото после</Text>
-                </View>
-                <View className={`ml-auto rounded-[10px] px-2 py-0.5 ${statusPillClass(topic.status)}`}>
+                <View className={`shrink-0 rounded-[10px] px-2.5 py-1 ${statusPillClass(topic.status)}`}>
                   <Text className="font-sans-medium text-[10px] font-medium">{statusLabelRu(topic.status)}</Text>
                 </View>
               </View>
@@ -494,6 +507,10 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
 }
 
 const styles = StyleSheet.create({
+  cardSurface: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+  },
   swipeHintLeft: {
     fontSize: 28,
     fontWeight: "800",

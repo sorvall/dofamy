@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { DayPickerCalendar } from "../../components/DayPickerCalendar";
+import { SCREEN_HORIZONTAL_PADDING } from "../../components/ScreenHeader";
 import { ReportMarkdownText } from "../../components/ReportMarkdownText";
 import { TopicCard } from "../../components/TopicCard";
 import { buildDayReportTasksJson, fetchDayClosingReflection } from "../../lib/dayReport";
@@ -163,8 +164,8 @@ export default function CalendarScreen() {
   return (
     <SafeAreaView className="flex-1 bg-paper" edges={["top", "left", "right"]}>
       <ScrollView
-        className="flex-1 px-5"
-        contentContainerStyle={{ paddingBottom: 36 }}
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 36, paddingHorizontal: SCREEN_HORIZONTAL_PADDING }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

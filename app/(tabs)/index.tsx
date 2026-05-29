@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { TopicCard } from "../../components/TopicCard";
+import { ScreenHeader, SCREEN_HORIZONTAL_PADDING } from "../../components/ScreenHeader";
 import { VoiceRecorder } from "../../components/VoiceRecorder";
 import { ReportMarkdownText } from "../../components/ReportMarkdownText";
 import { extractTopicsFromTranscript } from "../../lib/deepseek";
@@ -86,19 +87,23 @@ export default function TodayScreen() {
     <SafeAreaView className="flex-1 bg-paper" edges={["top", "left", "right"]}>
       <View className="flex-1">
         <ScrollView
-          className="flex-1 px-5"
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
+          className="flex-1"
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingBottom: 20,
+            paddingHorizontal: SCREEN_HORIZONTAL_PADDING,
+          }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="pt-3 pb-4">
-            <View className="flex-row items-center justify-between">
-              <Text className="font-display text-[15px] lowercase tracking-tight text-ink">Сегодня</Text>
-              <View className="rounded-[20px] bg-line px-[10px] py-1">
+          <ScreenHeader
+            title="Сегодня"
+            trailing={
+              <View className="rounded-[20px] bg-line px-3 py-1.5">
                 <Text className="font-sans text-[11px] text-muted">{datePillRu(todayDateKey())}</Text>
               </View>
-            </View>
-          </View>
+            }
+          />
 
           <View className="pt-2 pb-6">
             {busy ? (
@@ -154,7 +159,10 @@ export default function TodayScreen() {
           )}
         </ScrollView>
 
-        <View className="border-t border-line bg-paper px-5 pb-2 pt-3">
+        <View
+          className="border-t border-line bg-paper pt-3 pb-2"
+          style={{ paddingHorizontal: SCREEN_HORIZONTAL_PADDING }}
+        >
           <Pressable
             onPress={() => void onDayReport()}
             disabled={reportBusy}
