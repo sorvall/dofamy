@@ -31,6 +31,9 @@ interface AnchorCameraProps {
   existingUri?: string;
   onCapture: (uri: string) => void;
   disabled?: boolean;
+  /** Только одна CameraView на экран — иначе ломается превью на iOS. */
+  sessionActive?: boolean;
+  onActivateSession?: () => void;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -115,6 +118,8 @@ export function AnchorCamera({
   existingUri,
   onCapture,
   disabled,
+  sessionActive = true,
+  onActivateSession,
 }: AnchorCameraProps) {
   const { width: windowWidth } = useWindowDimensions();
   /** Новый mount при фокусе экрана / пересъёмке — иначе на iOS сессия иногда остаётся без preview/photoOutput. */
@@ -132,6 +137,23 @@ export function AnchorCamera({
   const previewHeight = Math.max(220, Math.round(windowWidth * 0.75));
 
   const showPreviewOnly = Boolean(existingUri) && !reshooting;
+  const showLiveCamera = sessionActive || reshooting;
+
+  const pickFromGalleryWeb = () => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.capture = "environment";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const uri = URL.createObjectURL(file);
+      onCapture(uri);
+      setReshooting(false);
+    };
+    input.click();
+  };
 
   const clearStabilizeTimer = useCallback(() => {
     if (stabilizeTimer.current) {
@@ -218,6 +240,29 @@ export function AnchorCamera({
     }
   };
 
+  if (!showLiveCamera && !showPreviewOnly) {
+    return (
+      <Animated.View
+        entering={FadeIn}
+        className="aspect-[4/3] w-full items-center justify-center rounded-card border border-dashed border-line bg-mist px-5"
+      >
+        <Text className="mb-4 text-center font-sans text-base leading-6 text-muted">{instruction}</Text>
+        <PrimaryButton
+          label={Platform.OS === "web" ? "Выбрать или снять фото" : "Открыть камеру"}
+          onPress={() => {
+            if (Platform.OS === "web") {
+              pickFromGalleryWeb();
+              return;
+            }
+            onActivateSession?.();
+          }}
+          disabled={disabled}
+        />
+        <Text className="mt-3 text-center font-sans text-xs text-muted">Необязательно — можно закончить задачу без фото</Text>
+      </Animated.View>
+    );
+  }
+
   if (!permission) {
     return (
       <Animated.View entering={FadeIn} className="aspect-[4/3] w-full items-center justify-center rounded-card border border-line bg-mist">
@@ -236,6 +281,11 @@ export function AnchorCamera({
           Нужен доступ к камере для якорного фото.
         </Text>
         <PrimaryButton label="Разрешить камеру" onPress={() => void requestPermission()} />
+        {Platform.OS === "web" ? (
+          <Pressable onPress={pickFromGalleryWeb} className="mt-3 py-2">
+            <Text className="text-center font-sans text-sm text-muted">Или выбрать фото из галереи</Text>
+          </Pressable>
+        ) : null}
       </Animated.View>
     );
   }
@@ -305,6 +355,11 @@ export function AnchorCamera({
             className="mb-3 min-h-[48px] items-center justify-center rounded-2xl border border-white/20 bg-white/10"
           >
             <Text className="text-base font-medium text-white">Отменить пересъёмку</Text>
+          </Pressable>
+        ) : null}
+        {Platform.OS === "web" ? (
+          <Pressable onPress={pickFromGalleryWeb} className="mb-3 min-h-[44px] items-center justify-center">
+            <Text className="text-base font-medium text-white/80">Выбрать из галереи</Text>
           </Pressable>
         ) : null}
         <PrimaryButton

@@ -1,8 +1,8 @@
-import { useLocalSearchParams, useNavigation } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Pressable,
   ScrollView,
   Text,
   View,
@@ -13,19 +13,25 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { AnchorCamera } from "../../components/AnchorCamera";
 import { VoiceRecorder } from "../../components/VoiceRecorder";
 import { transcribeAudio } from "../../lib/speechkit";
+import { userAlert } from "../../lib/userAlert";
 import { mergeTopicStatus, useSessionStore } from "../../stores/sessionStore";
+
+type LiveCameraSlot = "before" | "after" | null;
 
 export default function ActivityScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
+  const router = useRouter();
   const topicId = typeof id === "string" ? id : id?.[0] ?? "";
   const topicRaw = useSessionStore((s) => s.topics.find((t) => t.id === topicId));
   const topic = topicRaw ? mergeTopicStatus(topicRaw) : undefined;
   const setBefore = useSessionStore((s) => s.setBeforePhoto);
   const setAfter = useSessionStore((s) => s.setAfterPhoto);
   const setVoice = useSessionStore((s) => s.setVoiceTranscript);
+  const setManualComplete = useSessionStore((s) => s.setManualComplete);
 
   const [voiceBusy, setVoiceBusy] = useState(false);
+  const [liveCamera, setLiveCamera] = useState<LiveCameraSlot>(null);
 
   useEffect(() => {
     if (topicRaw) {
@@ -33,7 +39,12 @@ export default function ActivityScreen() {
     }
   }, [navigation, topicRaw?.title]);
 
-  const section2Locked = useMemo(() => !topic?.beforePhotoUri, [topic?.beforePhotoUri]);
+  const finishTask = useCallback(() => {
+    if (!topic) return;
+    setManualComplete(topic.id, true);
+    setLiveCamera(null);
+    router.back();
+  }, [router, setManualComplete, topic]);
 
   if (!topicId) {
     return (
@@ -58,11 +69,13 @@ export default function ActivityScreen() {
       setVoice(topic.id, text);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка";
-      Alert.alert("Не удалось расшифровать", msg);
+      userAlert("Не удалось расшифровать", msg);
     } finally {
       setVoiceBusy(false);
     }
   };
+
+  const isDone = topic.status === "done";
 
   return (
     <SafeAreaView className="flex-1 bg-paper" edges={["bottom", "left", "right"]}>
@@ -77,23 +90,20 @@ export default function ActivityScreen() {
           <Text className="mt-2 font-sans text-lg leading-7 text-muted">{topic.description}</Text>
         </Animated.View>
 
-        <SectionTitle n={1} title="Фото «до» — якорь" />
+        <SectionTitle n={1} title="Фото «до» — якорь" optional />
         <AnchorCamera
           instruction="Сфотографируй место — это твой якорь"
           existingUri={topic.beforePhotoUri}
-          onCapture={(uri) => setBefore(topic.id, uri)}
+          onCapture={(uri) => {
+            setBefore(topic.id, uri);
+            setLiveCamera(null);
+          }}
+          sessionActive={liveCamera === "before"}
+          onActivateSession={() => setLiveCamera("before")}
         />
 
-        <View
-          className={section2Locked ? "mt-8 opacity-45" : "mt-8"}
-          pointerEvents={section2Locked ? "none" : "auto"}
-        >
-          <SectionTitle n={2} title="Голосовой отчёт" />
-          {section2Locked ? (
-            <Text className="mb-3 font-sans text-base text-muted">
-              Сначала сделай фото «до», чтобы перейти к отчёту.
-            </Text>
-          ) : null}
+        <View className="mt-8">
+          <SectionTitle n={2} title="Голосовой отчёт" optional />
           {voiceBusy ? (
             <Animated.View
               entering={FadeIn}
@@ -105,7 +115,7 @@ export default function ActivityScreen() {
           ) : (
             <VoiceRecorder
               mode="hold"
-              disabled={section2Locked || voiceBusy}
+              disabled={voiceBusy}
               onRecordingComplete={onVoiceDone}
               recordingLabel="Запись… отпусти, когда закончишь"
             />
@@ -135,27 +145,20 @@ export default function ActivityScreen() {
         </View>
 
         <View className="mt-10">
-          <SectionTitle n={3} title="Фото «после»" />
-          {/*
-            Две CameraView на экране одновременно ломают превью (одна нативная сессия).
-            Камеру «после» монтируем только после фото «до».
-          */}
-          {topic.beforePhotoUri ? (
-            <AnchorCamera
-              instruction="Сфотографируй результат"
-              existingUri={topic.afterPhotoUri}
-              onCapture={(uri) => setAfter(topic.id, uri)}
-            />
-          ) : (
-            <View className="aspect-[4/3] w-full items-center justify-center rounded-card border border-line bg-mist px-4">
-              <Text className="text-center font-sans text-base leading-6 text-muted">
-                Сначала сделай фото «до» выше. Здесь появится камера для кадра «после», когда якорь будет готов.
-              </Text>
-            </View>
-          )}
+          <SectionTitle n={3} title="Фото «после»" optional />
+          <AnchorCamera
+            instruction="Сфотографируй результат"
+            existingUri={topic.afterPhotoUri}
+            onCapture={(uri) => {
+              setAfter(topic.id, uri);
+              setLiveCamera(null);
+            }}
+            sessionActive={liveCamera === "after"}
+            onActivateSession={() => setLiveCamera("after")}
+          />
         </View>
 
-        {topic.status === "done" ? (
+        {isDone ? (
           <Animated.View
             entering={FadeInDown.springify()}
             className="mt-8 rounded-card border border-success/30 bg-white p-5"
@@ -169,19 +172,45 @@ export default function ActivityScreen() {
           >
             <Text className="text-center font-display-semibold text-xl text-success">Готово ✓</Text>
           </Animated.View>
-        ) : null}
+        ) : (
+          <View className="mt-10">
+            <Pressable
+              onPress={finishTask}
+              className="items-center justify-center rounded-[18px] bg-ink py-4 active:opacity-90"
+              style={{
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.12,
+                shadowRadius: 14,
+                elevation: 4,
+              }}
+            >
+              <Text className="font-display text-base lowercase tracking-tight text-white">
+                закончить задачу
+              </Text>
+            </Pressable>
+            <Text className="mt-2 text-center font-sans text-xs leading-5 text-muted">
+              Фото и голосовой отчёт необязательны — можно завершить в любой момент.
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function SectionTitle({ n, title }: { n: number; title: string }) {
+function SectionTitle({ n, title, optional }: { n: number; title: string; optional?: boolean }) {
   return (
     <Animated.View entering={FadeInDown.delay(n * 30).duration(380)} className="mb-3 mt-8 flex-row items-center gap-3">
       <View className="h-10 w-10 items-center justify-center rounded-2xl border border-line/60 bg-accent">
         <Text className="font-display-semibold text-lg text-ink">{n}</Text>
       </View>
-      <Text className="flex-1 font-display-semibold text-xl text-ink">{title}</Text>
+      <View className="min-w-0 flex-1">
+        <Text className="font-display-semibold text-xl text-ink">{title}</Text>
+        {optional ? (
+          <Text className="mt-0.5 font-sans text-xs text-muted">необязательно</Text>
+        ) : null}
+      </View>
     </Animated.View>
   );
 }
