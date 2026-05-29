@@ -1,0 +1,157 @@
+# Деплой Dofamy PWA на VPS: сборка web → архив → SCP → docker compose (nginx + Caddy).
+#
+# Секреты GitHub (Settings → Secrets and variables → Actions):
+#   SERVER_HOST     — IP или домен сервера
+#   SERVER_USER     — пользователь SSH (например root или deploy)
+#   SSH_PASSWORD    — пароль SSH
+#   DEPLOY_PATH     — каталог на сервере, например /root/dofamy
+#
+# Опционально:
+#   SSH_PORT        — порт SSH, если не 22
+#
+# Сборка (EXPO_PUBLIC_* — попадают в бандл на этапе CI):
+#   EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY
+#   EXPO_PUBLIC_YANDEX_FOLDER_ID
+#   EXPO_PUBLIC_DEEPSEEK_API_KEY
+#   EXPO_PUBLIC_YANDEX_IAM_TOKEN
+#
+# На сервере один раз: Docker + docker compose plugin.
+# В DEPLOY_PATH положите .env (не в git) с:
+#   SITE_DOMAIN=dofamy.example.com
+
+name: Build and Deploy Dofamy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      SSH_PORT_DEPLOY: ${{ secrets.SSH_PORT }}
+
+    steps:
+      - name: Verify deployment secrets
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || \
+             [ -z "${{ secrets.SSH_PASSWORD }}" ] || [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+            echo "::error::Задайте секреты: SERVER_HOST, SERVER_USER, SSH_PASSWORD, DEPLOY_PATH"
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web (PWA)
+        env:
+          EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY: ${{ secrets.EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY }}
+          EXPO_PUBLIC_YANDEX_FOLDER_ID: ${{ secrets.EXPO_PUBLIC_YANDEX_FOLDER_ID }}
+          EXPO_PUBLIC_DEEPSEEK_API_KEY: ${{ secrets.EXPO_PUBLIC_DEEPSEEK_API_KEY }}
+          EXPO_PUBLIC_YANDEX_IAM_TOKEN: ${{ secrets.EXPO_PUBLIC_YANDEX_IAM_TOKEN }}
+        run: npm run build:web
+
+      - name: Create deployment archive
+        run: |
+          set -euo pipefail
+          ARCHIVE_PATH="/tmp/dofamy-deploy-${GITHUB_RUN_ID}.tgz"
+          tar -czf "${ARCHIVE_PATH}" \
+            dist \
+            Dockerfile \
+            docker-compose.yml \
+            nginx.conf \
+            Caddyfile \
+            .env.example
+          mv "${ARCHIVE_PATH}" dofamy-deploy.tgz
+
+      - name: Ensure deploy directory exists
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+          script: mkdir -p '${{ secrets.DEPLOY_PATH }}'
+
+      - name: Copy archive to remote server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+          source: "dofamy-deploy.tgz"
+          target: ${{ secrets.DEPLOY_PATH }}
+
+      - name: Extract and run Docker Compose
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}'
+            test -n "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+            find . -mindepth 1 -maxdepth 1 \
+              ! -name '.env' \
+              ! -name 'dofamy-deploy.tgz' \
+              -exec rm -rf {} +
+            tar xzf dofamy-deploy.tgz
+            rm -f dofamy-deploy.tgz
+
+            if [ ! -f .env ]; then
+              echo "::error::.env not found in ${DEPLOY_PATH}. Create ${DEPLOY_PATH}/.env on server (see .env.example)."
+              if [ -f .env.example ]; then
+                echo "::notice::Initialize: cp ${DEPLOY_PATH}/.env.example ${DEPLOY_PATH}/.env and set SITE_DOMAIN."
+              fi
+              exit 1
+            fi
+
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Docker not found. Installing via get.docker.com..."
+              if command -v curl >/dev/null 2>&1; then
+                curl -fsSL https://get.docker.com | sh
+              elif command -v wget >/dev/null 2>&1; then
+                wget -qO- https://get.docker.com | sh
+              else
+                echo "::error::Neither curl nor wget is available to install Docker."
+                exit 1
+              fi
+            fi
+
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE_CMD="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              COMPOSE_CMD="docker-compose"
+            else
+              echo "::error::Docker Compose is not available on server."
+              exit 1
+            fi
+
+            $COMPOSE_CMD up -d --build
+            $COMPOSE_CMD restart caddy
+            $COMPOSE_CMD ps

@@ -1,0 +1,4 @@
+# Домен из .env на сервере: SITE_DOMAIN=dofamy.example.com
+{$SITE_DOMAIN} {
+    reverse_proxy web:80
+}
