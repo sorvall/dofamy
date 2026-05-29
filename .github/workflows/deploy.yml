@@ -77,6 +77,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify API keys for web build
+        env:
+          EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY: ${{ secrets.EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY }}
+          EXPO_PUBLIC_YANDEX_FOLDER_ID: ${{ secrets.EXPO_PUBLIC_YANDEX_FOLDER_ID }}
+          EXPO_PUBLIC_DEEPSEEK_API_KEY: ${{ secrets.EXPO_PUBLIC_DEEPSEEK_API_KEY }}
+        run: node scripts/check-env.mjs --require
+
       - name: Build web (PWA)
         env:
           EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY: ${{ secrets.EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY }}

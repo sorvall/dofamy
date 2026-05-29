@@ -37,6 +37,25 @@ for key in SERVER_HOST SERVER_USER SSH_PASSWORD; do
   echo "OK: $key"
 done
 
+# Ключи для CI-сборки web (SpeechKit + DeepSeek)
+for key in \
+  EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY \
+  EXPO_PUBLIC_YANDEX_FOLDER_ID \
+  EXPO_PUBLIC_DEEPSEEK_API_KEY; do
+  val="${!key:-}"
+  if [ -z "$val" ]; then
+    echo "Пустое значение: $key (скопируйте из локального .env)"
+    exit 1
+  fi
+  printf '%s' "$val" | gh secret set "$key" --repo "$REPO"
+  echo "OK: $key"
+done
+
+if [ -n "${EXPO_PUBLIC_YANDEX_IAM_TOKEN:-}" ]; then
+  printf '%s' "$EXPO_PUBLIC_YANDEX_IAM_TOKEN" | gh secret set EXPO_PUBLIC_YANDEX_IAM_TOKEN --repo "$REPO"
+  echo "OK: EXPO_PUBLIC_YANDEX_IAM_TOKEN"
+fi
+
 if [ -n "${DEPLOY_PATH:-}" ]; then
   printf '%s' "$DEPLOY_PATH" | gh secret set DEPLOY_PATH --repo "$REPO"
   echo "OK: DEPLOY_PATH"

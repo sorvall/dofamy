@@ -19,6 +19,7 @@ import { ReportMarkdownText } from "../../components/ReportMarkdownText";
 import { extractTopicsFromTranscript } from "../../lib/deepseek";
 import { buildDayReportTasksJson, fetchDayClosingReflection } from "../../lib/dayReport";
 import { transcribeAudio } from "../../lib/speechkit";
+import { userAlert } from "../../lib/userAlert";
 import { datePillRu, todayDateKey } from "../../lib/dateKey";
 import { useSessionStore } from "../../stores/sessionStore";
 
@@ -40,10 +41,17 @@ export default function TodayScreen() {
           text,
           topics.map((t) => ({ title: t.title }))
         );
+        if (parsed.length === 0) {
+          userAlert(
+            "Задачи не найдены",
+            `Расшифровка: «${text.slice(0, 120)}${text.length > 120 ? "…" : ""}»\n\nСкажите конкретные планы вслух, например: «позвонить маме, убрать кухню, сходить в зал».`
+          );
+          return;
+        }
         appendTopics(parsed);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
-        Alert.alert("Не получилось обработать запись", msg);
+        userAlert("Не получилось обработать запись", msg);
       } finally {
         setBusy(false);
       }
