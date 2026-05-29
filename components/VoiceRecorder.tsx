@@ -2,7 +2,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, LayoutChangeEvent, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, LayoutChangeEvent, Platform, Pressable, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -72,6 +72,24 @@ const FAB_CORNER = 22;
 const FAB_ICON_MIC = 36;
 const FAB_ICON_STOP = 30;
 
+function isWebMicAvailable(): boolean {
+  if (Platform.OS !== "web" || typeof window === "undefined") return true;
+  return window.isSecureContext && typeof navigator.mediaDevices?.getUserMedia === "function";
+}
+
+function recordingStartErrorMessage(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      return "Микрофон в браузере доступен только по HTTPS. Откройте сайт как https://ваш-домен.ru (не http://IP:8082).";
+    }
+    if (/No media devices|NotAllowed|Permission|NotFound/i.test(msg)) {
+      return "Нет доступа к микрофону. Разрешите микрофон в браузере. На iPhone нужен Safari и HTTPS.";
+    }
+  }
+  return msg || "Не удалось начать запись";
+}
+
 export function VoiceRecorder({
   mode,
   onRecordingComplete,
@@ -85,6 +103,7 @@ export function VoiceRecorder({
   const [isRecording, setIsRecording] = useState(false);
   const [level, setLevel] = useState(0.2);
   const [busy, setBusy] = useState(false);
+  const [webMicHint, setWebMicHint] = useState<string | null>(null);
   const barW = useSharedValue(0);
   const levelSV = useSharedValue(0.12);
   const scale = useSharedValue(1);
@@ -94,6 +113,11 @@ export function VoiceRecorder({
   }, [level, levelSV]);
 
   useEffect(() => {
+    if (Platform.OS === "web" && !isWebMicAvailable()) {
+      setWebMicHint(
+        "Запись голоса в браузере работает только по HTTPS — настройте домен с сертификатом (через Caddy Urbanscore)."
+      );
+    }
     return () => {
       void recordingRef.current?.stopAndUnloadAsync();
     };
@@ -113,8 +137,16 @@ export function VoiceRecorder({
 
   const startRecording = useCallback(async () => {
     if (disabled || busy) return;
+    if (Platform.OS === "web" && !isWebMicAvailable()) {
+      Alert.alert("Нужен HTTPS", recordingStartErrorMessage(new Error("insecure")));
+      return;
+    }
     try {
-      await Audio.requestPermissionsAsync();
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Микрофон", "Разрешите доступ к микрофону в настройках браузера.");
+        return;
+      }
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -129,8 +161,12 @@ export function VoiceRecorder({
       recordingRef.current = recording;
       setIsRecording(true);
       setLevel(0.25);
+      setWebMicHint(null);
     } catch (e) {
       console.warn("startRecording", e);
+      const message = recordingStartErrorMessage(e);
+      setWebMicHint(message);
+      Alert.alert("Не удалось записать", message);
       setIsRecording(false);
     }
   }, [disabled, busy, onStatusUpdate]);
@@ -320,6 +356,12 @@ export function VoiceRecorder({
       {variant === "fab" && mode === "toggle" && fabCaption && !isRecording ? (
         <Text className="mt-4 max-w-[300px] px-2 text-center font-sans text-xs leading-5 text-muted">
           {fabCaption}
+        </Text>
+      ) : null}
+
+      {webMicHint ? (
+        <Text className="mt-3 max-w-[320px] px-2 text-center font-sans text-xs leading-5 text-amber-ink">
+          {webMicHint}
         </Text>
       ) : null}
 
