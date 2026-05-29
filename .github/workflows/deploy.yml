@@ -4,7 +4,7 @@
 #   SERVER_HOST     — IP или домен сервера
 #   SERVER_USER     — пользователь SSH (например root или deploy)
 #   SSH_PASSWORD    — пароль SSH
-#   DEPLOY_PATH     — каталог на сервере, например /root/dofamy
+#   DEPLOY_PATH     — каталог на сервере (опционально, по умолчанию /root/dofamy)
 #
 # Опционально:
 #   SSH_PORT        — порт SSH, если не 22
@@ -39,15 +39,19 @@ jobs:
 
     env:
       SSH_PORT_DEPLOY: ${{ secrets.SSH_PORT }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
 
     steps:
       - name: Verify deployment secrets
         run: |
           set -euo pipefail
           if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || \
-             [ -z "${{ secrets.SSH_PASSWORD }}" ] || [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
-            echo "::error::Задайте секреты репозитория: SERVER_HOST, SERVER_USER, SSH_PASSWORD, DEPLOY_PATH"
+             [ -z "${{ secrets.SSH_PASSWORD }}" ]; then
+            echo "::error::Задайте секреты репозитория: SERVER_HOST, SERVER_USER, SSH_PASSWORD"
             exit 1
+          fi
+          if [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+            echo "::notice::DEPLOY_PATH не задан — используем /root/dofamy"
           fi
 
       - name: Checkout repository
@@ -91,7 +95,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-          script: mkdir -p '${{ secrets.DEPLOY_PATH }}'
+          script: mkdir -p '${{ env.DEPLOY_PATH }}'
 
       - name: Copy archive to remote server
         uses: appleboy/scp-action@v0.1.7
@@ -101,7 +105,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
           source: "dofamy-deploy.tgz"
-          target: ${{ secrets.DEPLOY_PATH }}
+          target: ${{ env.DEPLOY_PATH }}
 
       - name: Extract and run Docker Compose
         uses: appleboy/ssh-action@v0.1.10
@@ -113,7 +117,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}'
+            DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
             test -n "$DEPLOY_PATH"
             cd "$DEPLOY_PATH"
             find . -mindepth 1 -maxdepth 1 \
