@@ -1,9 +1,27 @@
-# На том же VPS, что Urbanscore: порты 80/443 заняты его Caddy.
-# Dofamy — только nginx на WEB_PORT (8082). HTTPS и сертификат — в Caddyfile Urbanscore.
+# Caddy + Let's Encrypt для выделенного сервера dofamy.ru
 
 services:
   web:
     build: .
     restart: unless-stopped
+    expose:
+      - "80"
+
+  caddy:
+    image: mirror.gcr.io/library/caddy:2-alpine
+    restart: unless-stopped
     ports:
-      - "${WEB_PORT:-8082}:80"
+      - "80:80"
+      - "443:443"
+    env_file:
+      - .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  caddy_data:
+  caddy_config:

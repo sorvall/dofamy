@@ -94,6 +94,7 @@ jobs:
             Dockerfile \
             docker-compose.yml \
             nginx.conf \
+            Caddyfile \
             Caddyfile.urbanscore \
             .env.example
           mv "${ARCHIVE_PATH}" dofamy-deploy.tgz
@@ -138,8 +139,10 @@ jobs:
             rm -f dofamy-deploy.tgz
 
             if [ ! -f .env ]; then
-              echo "WEB_PORT=8082" > .env
-              echo "::notice::Создан ${DEPLOY_PATH}/.env. HTTPS: добавьте Caddyfile.urbanscore в Caddy Urbanscore."
+              echo "SITE_DOMAIN=dofamy.ru" > .env
+            fi
+            if ! grep -q '^SITE_DOMAIN=' .env; then
+              echo "SITE_DOMAIN=dofamy.ru" >> .env
             fi
 
             if ! command -v docker >/dev/null 2>&1; then
@@ -170,5 +173,6 @@ jobs:
             fi
 
             $COMPOSE_CMD up -d --build
+            $COMPOSE_CMD restart caddy
             $COMPOSE_CMD ps
-            echo "::notice::Dofamy HTTP (внутренний): http://127.0.0.1:8082 → после Caddy: https://dofamy.ru"
+            echo "::notice::Dofamy: https://dofamy.ru (Caddy + Let's Encrypt)"

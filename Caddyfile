@@ -1,0 +1,9 @@
+# SITE_DOMAIN=dofamy.ru в .env на сервере
+
+{$SITE_DOMAIN} {
+    reverse_proxy web:80
+}
+
+www.{$SITE_DOMAIN} {
+    redir https://{$SITE_DOMAIN}{uri}
+}
