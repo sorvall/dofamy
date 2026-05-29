@@ -1,5 +1,8 @@
+import { Platform } from "react-native";
 /** SDK 54+: классический API в подмодуле `legacy` */
 import * as FileSystem from "expo-file-system/legacy";
+
+import { loadWebRecordingAsWavBytes } from "./webAudioWav";
 
 import {
   getYandexFolderId,
@@ -179,21 +182,26 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
   }
   const authorization = resolveAuthorizationHeader();
 
-  const info = await FileSystem.getInfoAsync(audioUri);
-  if (!info.exists) {
-    throw new Error("Файл записи не найден.");
-  }
-  const size = info.size ?? 0;
-  if (size > 1024 * 1024) {
-    throw new Error(
-      "Файл больше 1 МБ — лимит синхронного SpeechKit. Сократите запись или используйте async STT."
-    );
+  let fileBytes: Uint8Array;
+  if (Platform.OS === "web") {
+    fileBytes = await loadWebRecordingAsWavBytes(audioUri);
+  } else {
+    const info = await FileSystem.getInfoAsync(audioUri);
+    if (!info.exists) {
+      throw new Error("Файл записи не найден.");
+    }
+    const size = info.size ?? 0;
+    if (size > 1024 * 1024) {
+      throw new Error(
+        "Файл больше 1 МБ — лимит синхронного SpeechKit. Сократите запись или используйте async STT."
+      );
+    }
+    const base64 = await FileSystem.readAsStringAsync(audioUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    fileBytes = base64ToUint8Array(base64);
   }
 
-  const base64 = await FileSystem.readAsStringAsync(audioUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  const fileBytes = base64ToUint8Array(base64);
   const { pcm, sampleRateHertz } = parseWavPcm(fileBytes);
 
   const params = new URLSearchParams({

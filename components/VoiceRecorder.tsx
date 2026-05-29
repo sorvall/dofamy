@@ -3,6 +3,7 @@ import { Audio } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, LayoutChangeEvent, Platform, Pressable, Text, View } from "react-native";
+import { pickWebRecordingMimeType } from "../lib/webAudioWav";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -52,8 +53,8 @@ const recordingOptions: Audio.RecordingOptions = {
     bitRate: 256_000,
   },
   web: {
-    mimeType: "audio/wav",
-    bitsPerSecond: 256_000,
+    mimeType: pickWebRecordingMimeType(),
+    bitsPerSecond: 128_000,
   },
 };
 
@@ -83,7 +84,7 @@ function recordingStartErrorMessage(error: unknown): string {
     if (typeof window !== "undefined" && !window.isSecureContext) {
       return "Микрофон работает только по HTTPS. Откройте https://dofamy.ru (не http://IP:8082).";
     }
-    if (/No media devices|NotAllowed|Permission|NotFound/i.test(msg)) {
+    if (/No media devices|NotAllowed|Permission|NotFound|mimetype|mimeType|not supported/i.test(msg)) {
       return "Нет доступа к микрофону. Разрешите микрофон в браузере. На iPhone нужен Safari и HTTPS.";
     }
   }
