@@ -5,6 +5,7 @@
 #   SERVER_HOST, SERVER_USER, SSH_PASSWORD
 #   DEPLOY_PATH     — опционально, по умолчанию /root/dofamy
 #   SSH_PORT        — опционально
+#   DOCKERHUB_USERNAME / DOCKERHUB_TOKEN — опционально, если mirror.gcr.io недоступен
 #
 # Сборка (EXPO_PUBLIC_* — попадают в бандл на этапе CI):
 #   EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY
@@ -163,6 +164,11 @@ jobs:
             fi
 
             $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
+
+            if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+              echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            fi
+
             $COMPOSE_CMD up -d --build
             $COMPOSE_CMD ps
             echo "::notice::Dofamy HTTP (внутренний): http://127.0.0.1:8082 → после Caddy: https://dofamy.ru"
