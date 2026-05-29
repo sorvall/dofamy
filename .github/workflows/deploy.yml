@@ -3,8 +3,9 @@
 # Секреты GitHub (Settings → Secrets and variables → Actions):
 #   SERVER_HOST     — IP или домен сервера
 #   SERVER_USER     — пользователь SSH (например root или deploy)
-#   SSH_PASSWORD    — пароль SSH
-#   DEPLOY_PATH     — каталог на сервере, например /root/dofamy
+#   SSH_PASSWORD    — пароль SSH (если вход по паролю)
+#   SSH_PRIVATE_KEY — приватный SSH-ключ целиком (если вход по ключу; предпочтительно)
+#   DEPLOY_PATH     — каталог на сервере, например /root/dofamy (опционально, по умолчанию /root/dofamy)
 #
 # Опционально:
 #   SSH_PORT        — порт SSH, если не 22
@@ -43,6 +44,7 @@ jobs:
       SECRET_SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SECRET_SERVER_USER: ${{ secrets.SERVER_USER }}
       SECRET_SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      SECRET_SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       SECRET_DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
 
     steps:
@@ -52,11 +54,18 @@ jobs:
           missing=""
           [ -z "${SECRET_SERVER_HOST:-}" ] && missing="${missing} SERVER_HOST"
           [ -z "${SECRET_SERVER_USER:-}" ] && missing="${missing} SERVER_USER"
-          [ -z "${SECRET_SSH_PASSWORD:-}" ] && missing="${missing} SSH_PASSWORD"
+          if [ -z "${SECRET_SSH_PASSWORD:-}" ] && [ -z "${SECRET_SSH_PRIVATE_KEY:-}" ]; then
+            missing="${missing} SSH_PASSWORD или SSH_PRIVATE_KEY"
+          fi
           if [ -n "${missing}" ]; then
             echo "::error::Не заданы repository secrets:${missing}"
             echo "::error::GitHub → Settings → Secrets and variables → Actions → вкладка Secrets (не Variables)."
             exit 1
+          fi
+          if [ -n "${SECRET_SSH_PRIVATE_KEY:-}" ]; then
+            echo "::notice::SSH: будет использован SSH_PRIVATE_KEY"
+          else
+            echo "::notice::SSH: будет использован SSH_PASSWORD (на многих VPS пароль отключён — лучше ключ)"
           fi
           if [ -z "${SECRET_DEPLOY_PATH:-}" ]; then
             echo "::notice::DEPLOY_PATH не задан — используем /root/dofamy"
@@ -97,10 +106,11 @@ jobs:
           mv "${ARCHIVE_PATH}" dofamy-deploy.tgz
 
       - name: Ensure deploy directory exists
-        uses: appleboy/ssh-action@v0.1.10
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
           script: mkdir -p '${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}'
@@ -110,16 +120,18 @@ jobs:
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
           source: "dofamy-deploy.tgz"
           target: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
 
       - name: Extract and run Docker Compose
-        uses: appleboy/ssh-action@v0.1.10
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
           script_stop: true
