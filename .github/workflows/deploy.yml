@@ -3,8 +3,9 @@
 # Секреты GitHub (Settings → Secrets and variables → Actions):
 #   SERVER_HOST     — IP или домен сервера
 #   SERVER_USER     — пользователь SSH (например root или deploy)
-#   SSH_PASSWORD    — пароль SSH (если вход по паролю)
-#   SSH_PRIVATE_KEY — приватный SSH-ключ целиком (если вход по ключу; предпочтительно)
+#   SSH_PASSWORD    — пароль SSH (вход по логину/паролю)
+#   SSH_PRIVATE_KEY — опционально, только если нужен ключ вместо пароля
+#   SSH_AUTH        — password (по умолчанию) или key — какой способ использовать
 #   DEPLOY_PATH     — каталог на сервере, например /root/dofamy (опционально, по умолчанию /root/dofamy)
 #
 # Опционально:
@@ -46,6 +47,7 @@ jobs:
       SECRET_SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
       SECRET_SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       SECRET_DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
 
     steps:
       - name: Verify deployment secrets
@@ -54,18 +56,29 @@ jobs:
           missing=""
           [ -z "${SECRET_SERVER_HOST:-}" ] && missing="${missing} SERVER_HOST"
           [ -z "${SECRET_SERVER_USER:-}" ] && missing="${missing} SERVER_USER"
-          if [ -z "${SECRET_SSH_PASSWORD:-}" ] && [ -z "${SECRET_SSH_PRIVATE_KEY:-}" ]; then
-            missing="${missing} SSH_PASSWORD или SSH_PRIVATE_KEY"
+          if [ "${SSH_AUTH_MODE}" = "password" ] && [ -z "${SECRET_SSH_PASSWORD:-}" ]; then
+            missing="${missing} SSH_PASSWORD"
+          fi
+          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -z "${SECRET_SSH_PRIVATE_KEY:-}" ]; then
+            missing="${missing} SSH_PRIVATE_KEY"
           fi
           if [ -n "${missing}" ]; then
             echo "::error::Не заданы repository secrets:${missing}"
             echo "::error::GitHub → Settings → Secrets and variables → Actions → вкладка Secrets (не Variables)."
             exit 1
           fi
-          if [ -n "${SECRET_SSH_PRIVATE_KEY:-}" ]; then
-            echo "::notice::SSH: будет использован SSH_PRIVATE_KEY"
+          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -z "${SECRET_SSH_PRIVATE_KEY:-}" ]; then
+            echo "::error::SSH_AUTH=key, но SSH_PRIVATE_KEY не задан"
+            exit 1
+          fi
+          if [ "${SSH_AUTH_MODE}" = "password" ] && [ -z "${SECRET_SSH_PASSWORD:-}" ]; then
+            echo "::error::SSH_AUTH=password (по умолчанию), но SSH_PASSWORD не задан"
+            exit 1
+          fi
+          if [ "${SSH_AUTH_MODE}" = "password" ]; then
+            echo "::notice::SSH: вход по логину и паролю (SERVER_USER + SSH_PASSWORD)"
           else
-            echo "::notice::SSH: будет использован SSH_PASSWORD (на многих VPS пароль отключён — лучше ключ)"
+            echo "::notice::SSH: вход по ключу (SSH_PRIVATE_KEY)"
           fi
           if [ -z "${SECRET_DEPLOY_PATH:-}" ]; then
             echo "::notice::DEPLOY_PATH не задан — используем /root/dofamy"
@@ -114,13 +127,14 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
-          if [ -n "${SSH_PRIVATE_KEY}" ]; then
+          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -n "${SSH_PRIVATE_KEY}" ]; then
             printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/deploy_key
             chmod 600 ~/.ssh/deploy_key
-            echo "SSH key loaded ($(wc -l < ~/.ssh/deploy_key) lines)"
+            echo "SSH key loaded"
           fi
           ssh-keyscan -H "${SERVER_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
@@ -129,20 +143,30 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
           SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
         run: |
           set -euo pipefail
           target="${SERVER_USER}@${SERVER_HOST}"
-          if [ -f ~/.ssh/deploy_key ]; then
+          # убираем случайный перевод строки в конце пароля из секрета
+          SSHPASS="$(printf '%s' "${SSH_PASSWORD}" | tr -d '\r\n')"
+          export SSHPASS
+          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -f ~/.ssh/deploy_key ]; then
             echo "Trying key auth → ${target}:${SSH_PORT}"
             ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
               "${target}" "echo OK: connected as \$(whoami)@\$(hostname)"
           else
             echo "Trying password auth → ${target}:${SSH_PORT}"
-            SSHPASS="${SSH_PASSWORD}" sshpass -e ssh -p "${SSH_PORT}" \
-              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+            if ! sshpass -e ssh -p "${SSH_PORT}" -v \
+              -o PreferredAuthentications=keyboard-interactive,password \
+              -o PubkeyAuthentication=no \
+              -o KbdInteractiveAuthentication=yes \
+              -o NumberOfPasswordPrompts=1 \
               -o StrictHostKeyChecking=yes \
-              "${target}" "echo OK: connected as \$(whoami)@\$(hostname)"
+              "${target}" "echo OK: connected as \$(whoami)@\$(hostname)" 2>&1; then
+              echo "::error::SSH по паролю не прошёл. Проверьте SERVER_USER, SSH_PASSWORD и включите PasswordAuthentication на сервере (scripts/enable-ssh-password.sh через консоль VPS)."
+              exit 5
+            fi
           fi
 
       - name: Ensure deploy directory exists
@@ -150,17 +174,21 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
           SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
         run: |
           set -euo pipefail
           target="${SERVER_USER}@${SERVER_HOST}"
-          if [ -f ~/.ssh/deploy_key ]; then
+          export SSHPASS="$(printf '%s' "${SSH_PASSWORD}" | tr -d '\r\n')"
+          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -f ~/.ssh/deploy_key ]; then
             ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
               "${target}" "mkdir -p '${DEPLOY_PATH}'"
           else
-            SSHPASS="${SSH_PASSWORD}" sshpass -e ssh -p "${SSH_PORT}" \
-              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+            sshpass -e ssh -p "${SSH_PORT}" \
+              -o PreferredAuthentications=keyboard-interactive,password \
+              -o PubkeyAuthentication=no \
+              -o KbdInteractiveAuthentication=yes \
               "${target}" "mkdir -p '${DEPLOY_PATH}'"
           fi
 
@@ -169,17 +197,21 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
           SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
         run: |
           set -euo pipefail
           target="${SERVER_USER}@${SERVER_HOST}:${DEPLOY_PATH}/dofamy-deploy.tgz"
-          if [ -f ~/.ssh/deploy_key ]; then
+          export SSHPASS="$(printf '%s' "${SSH_PASSWORD}" | tr -d '\r\n')"
+          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -f ~/.ssh/deploy_key ]; then
             scp -i ~/.ssh/deploy_key -P "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
               dofamy-deploy.tgz "${target}"
           else
-            SSHPASS="${SSH_PASSWORD}" sshpass -e scp -P "${SSH_PORT}" \
-              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+            sshpass -e scp -P "${SSH_PORT}" \
+              -o PreferredAuthentications=keyboard-interactive,password \
+              -o PubkeyAuthentication=no \
+              -o KbdInteractiveAuthentication=yes \
               dofamy-deploy.tgz "${target}"
           fi
 
@@ -188,11 +220,13 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
           SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
         run: |
           set -euo pipefail
           target="${SERVER_USER}@${SERVER_HOST}"
+          export SSHPASS="$(printf '%s' "${SSH_PASSWORD}" | tr -d '\r\n')"
           remote_script="$(cat <<'REMOTE'
           set -euo pipefail
           DEPLOY_PATH="$1"
@@ -227,11 +261,13 @@ jobs:
           $COMPOSE_CMD ps
           REMOTE
           )"
-          if [ -f ~/.ssh/deploy_key ]; then
+          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -f ~/.ssh/deploy_key ]; then
             ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
               "${target}" "bash -s -- '${DEPLOY_PATH}'" <<< "${remote_script}"
           else
-            SSHPASS="${SSH_PASSWORD}" sshpass -e ssh -p "${SSH_PORT}" \
-              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+            sshpass -e ssh -p "${SSH_PORT}" \
+              -o PreferredAuthentications=keyboard-interactive,password \
+              -o PubkeyAuthentication=no \
+              -o KbdInteractiveAuthentication=yes \
               "${target}" "bash -s -- '${DEPLOY_PATH}'" <<< "${remote_script}"
           fi
