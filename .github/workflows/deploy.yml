@@ -5,7 +5,7 @@
 #   SERVER_HOST, SERVER_USER, SSH_PASSWORD
 #   DEPLOY_PATH     — опционально, по умолчанию /root/dofamy
 #   SSH_PORT        — опционально
-#   DOCKERHUB_USERNAME / DOCKERHUB_TOKEN — опционально, если mirror.gcr.io недоступен
+#   DOCKERHUB_USERNAME / DOCKERHUB_TOKEN — не используются (образы с mirror.gcr.io)
 #
 # Сборка (EXPO_PUBLIC_* — попадают в бандл на этапе CI):
 #   EXPO_PUBLIC_YANDEX_SPEECHKIT_API_KEY
@@ -168,9 +168,22 @@ jobs:
 
             $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
 
-            if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
-              echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-            fi
+            pull_with_retry() {
+              local img="$1"
+              local i
+              for i in 1 2 3; do
+                if docker pull "$img"; then
+                  return 0
+                fi
+                echo "::warning::pull $img failed (attempt $i/3), retry in 10s..."
+                sleep 10
+              done
+              echo "::error::Failed to pull $img after 3 attempts"
+              return 1
+            }
+
+            pull_with_retry mirror.gcr.io/library/nginx:1.27-alpine
+            pull_with_retry mirror.gcr.io/library/caddy:2-alpine
 
             $COMPOSE_CMD up -d --build
             $COMPOSE_CMD restart caddy
