@@ -3,10 +3,8 @@
 # Секреты GitHub (Settings → Secrets and variables → Actions):
 #   SERVER_HOST     — IP или домен сервера
 #   SERVER_USER     — пользователь SSH (например root или deploy)
-#   SSH_PASSWORD    — пароль SSH (вход по логину/паролю)
-#   SSH_PRIVATE_KEY — опционально, только если нужен ключ вместо пароля
-#   SSH_AUTH        — password (по умолчанию) или key — какой способ использовать
-#   DEPLOY_PATH     — каталог на сервере, например /root/dofamy (опционально, по умолчанию /root/dofamy)
+#   SSH_PASSWORD    — пароль SSH
+#   DEPLOY_PATH     — каталог на сервере, например /root/dofamy
 #
 # Опционально:
 #   SSH_PORT        — порт SSH, если не 22
@@ -41,47 +39,15 @@ jobs:
 
     env:
       SSH_PORT_DEPLOY: ${{ secrets.SSH_PORT }}
-      # Проверка через env — безопаснее для паролей со спецсимволами
-      SECRET_SERVER_HOST: ${{ secrets.SERVER_HOST }}
-      SECRET_SERVER_USER: ${{ secrets.SERVER_USER }}
-      SECRET_SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      SECRET_SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      SECRET_DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-      SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
 
     steps:
       - name: Verify deployment secrets
         run: |
           set -euo pipefail
-          missing=""
-          [ -z "${SECRET_SERVER_HOST:-}" ] && missing="${missing} SERVER_HOST"
-          [ -z "${SECRET_SERVER_USER:-}" ] && missing="${missing} SERVER_USER"
-          if [ "${SSH_AUTH_MODE}" = "password" ] && [ -z "${SECRET_SSH_PASSWORD:-}" ]; then
-            missing="${missing} SSH_PASSWORD"
-          fi
-          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -z "${SECRET_SSH_PRIVATE_KEY:-}" ]; then
-            missing="${missing} SSH_PRIVATE_KEY"
-          fi
-          if [ -n "${missing}" ]; then
-            echo "::error::Не заданы repository secrets:${missing}"
-            echo "::error::GitHub → Settings → Secrets and variables → Actions → вкладка Secrets (не Variables)."
+          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || \
+             [ -z "${{ secrets.SSH_PASSWORD }}" ] || [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+            echo "::error::Задайте секреты репозитория: SERVER_HOST, SERVER_USER, SSH_PASSWORD, DEPLOY_PATH"
             exit 1
-          fi
-          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -z "${SECRET_SSH_PRIVATE_KEY:-}" ]; then
-            echo "::error::SSH_AUTH=key, но SSH_PRIVATE_KEY не задан"
-            exit 1
-          fi
-          if [ "${SSH_AUTH_MODE}" = "password" ] && [ -z "${SECRET_SSH_PASSWORD:-}" ]; then
-            echo "::error::SSH_AUTH=password (по умолчанию), но SSH_PASSWORD не задан"
-            exit 1
-          fi
-          if [ "${SSH_AUTH_MODE}" = "password" ]; then
-            echo "::notice::SSH: вход по логину и паролю (SERVER_USER + SSH_PASSWORD)"
-          else
-            echo "::notice::SSH: вход по ключу (SSH_PRIVATE_KEY)"
-          fi
-          if [ -z "${SECRET_DEPLOY_PATH:-}" ]; then
-            echo "::notice::DEPLOY_PATH не задан — используем /root/dofamy"
           fi
 
       - name: Checkout repository
@@ -118,156 +84,74 @@ jobs:
             .env.example
           mv "${ARCHIVE_PATH}" dofamy-deploy.tgz
 
-      - name: Install SSH tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y openssh-client sshpass
-
-      - name: Configure SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
-        run: |
-          set -euo pipefail
-          install -m 700 -d ~/.ssh
-          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -n "${SSH_PRIVATE_KEY}" ]; then
-            printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
-            echo "SSH key loaded"
-          fi
-          ssh-keyscan -H "${SERVER_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Test SSH connection
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
-          SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-        run: |
-          set -euo pipefail
-          target="${SERVER_USER}@${SERVER_HOST}"
-          # убираем случайный перевод строки в конце пароля из секрета
-          SSHPASS="$(printf '%s' "${SSH_PASSWORD}" | tr -d '\r\n')"
-          export SSHPASS
-          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -f ~/.ssh/deploy_key ]; then
-            echo "Trying key auth → ${target}:${SSH_PORT}"
-            ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
-              "${target}" "echo OK: connected as \$(whoami)@\$(hostname)"
-          else
-            echo "Trying password auth → ${target}:${SSH_PORT}"
-            if ! sshpass -e ssh -p "${SSH_PORT}" -v \
-              -o PreferredAuthentications=keyboard-interactive,password \
-              -o PubkeyAuthentication=no \
-              -o KbdInteractiveAuthentication=yes \
-              -o NumberOfPasswordPrompts=1 \
-              -o StrictHostKeyChecking=yes \
-              "${target}" "echo OK: connected as \$(whoami)@\$(hostname)" 2>&1; then
-              echo "::error::SSH по паролю не прошёл. Проверьте SERVER_USER, SSH_PASSWORD и включите PasswordAuthentication на сервере (scripts/enable-ssh-password.sh через консоль VPS)."
-              exit 5
-            fi
-          fi
-
       - name: Ensure deploy directory exists
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
-          SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-        run: |
-          set -euo pipefail
-          target="${SERVER_USER}@${SERVER_HOST}"
-          export SSHPASS="$(printf '%s' "${SSH_PASSWORD}" | tr -d '\r\n')"
-          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -f ~/.ssh/deploy_key ]; then
-            ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
-              "${target}" "mkdir -p '${DEPLOY_PATH}'"
-          else
-            sshpass -e ssh -p "${SSH_PORT}" \
-              -o PreferredAuthentications=keyboard-interactive,password \
-              -o PubkeyAuthentication=no \
-              -o KbdInteractiveAuthentication=yes \
-              "${target}" "mkdir -p '${DEPLOY_PATH}'"
-          fi
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+          script: mkdir -p '${{ secrets.DEPLOY_PATH }}'
 
       - name: Copy archive to remote server
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
-          SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-        run: |
-          set -euo pipefail
-          target="${SERVER_USER}@${SERVER_HOST}:${DEPLOY_PATH}/dofamy-deploy.tgz"
-          export SSHPASS="$(printf '%s' "${SSH_PASSWORD}" | tr -d '\r\n')"
-          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -f ~/.ssh/deploy_key ]; then
-            scp -i ~/.ssh/deploy_key -P "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
-              dofamy-deploy.tgz "${target}"
-          else
-            sshpass -e scp -P "${SSH_PORT}" \
-              -o PreferredAuthentications=keyboard-interactive,password \
-              -o PubkeyAuthentication=no \
-              -o KbdInteractiveAuthentication=yes \
-              dofamy-deploy.tgz "${target}"
-          fi
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+          source: "dofamy-deploy.tgz"
+          target: ${{ secrets.DEPLOY_PATH }}
 
       - name: Extract and run Docker Compose
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          SSH_AUTH_MODE: ${{ secrets.SSH_AUTH != '' && secrets.SSH_AUTH || 'password' }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
-          SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-        run: |
-          set -euo pipefail
-          target="${SERVER_USER}@${SERVER_HOST}"
-          export SSHPASS="$(printf '%s' "${SSH_PASSWORD}" | tr -d '\r\n')"
-          remote_script="$(cat <<'REMOTE'
-          set -euo pipefail
-          DEPLOY_PATH="$1"
-          cd "$DEPLOY_PATH"
-          find . -mindepth 1 -maxdepth 1 \
-            ! -name '.env' \
-            ! -name 'dofamy-deploy.tgz' \
-            -exec rm -rf {} +
-          tar xzf dofamy-deploy.tgz
-          rm -f dofamy-deploy.tgz
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}'
+            test -n "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+            find . -mindepth 1 -maxdepth 1 \
+              ! -name '.env' \
+              ! -name 'dofamy-deploy.tgz' \
+              -exec rm -rf {} +
+            tar xzf dofamy-deploy.tgz
+            rm -f dofamy-deploy.tgz
 
-          if [ ! -f .env ]; then
-            echo "::error::.env not found in $1. Create $1/.env on server with SITE_DOMAIN=..."
-            exit 1
-          fi
+            if [ ! -f .env ]; then
+              echo "::error::.env not found in ${DEPLOY_PATH}. Create ${DEPLOY_PATH}/.env on server (see .env.example in repo)."
+              if [ -f .env.example ]; then
+                echo "::notice::You can initialize with: cp ${DEPLOY_PATH}/.env.example ${DEPLOY_PATH}/.env and set SITE_DOMAIN."
+              fi
+              exit 1
+            fi
 
-          if ! command -v docker >/dev/null 2>&1; then
-            curl -fsSL https://get.docker.com | sh
-          fi
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Docker not found. Installing via get.docker.com..."
+              if command -v curl >/dev/null 2>&1; then
+                curl -fsSL https://get.docker.com | sh
+              elif command -v wget >/dev/null 2>&1; then
+                wget -qO- https://get.docker.com | sh
+              else
+                echo "::error::Neither curl nor wget is available to install Docker."
+                exit 1
+              fi
+            fi
 
-          if docker compose version >/dev/null 2>&1; then
-            COMPOSE_CMD="docker compose"
-          elif command -v docker-compose >/dev/null 2>&1; then
-            COMPOSE_CMD="docker-compose"
-          else
-            echo "::error::Docker Compose is not available on server."
-            exit 1
-          fi
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE_CMD="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              COMPOSE_CMD="docker-compose"
+            else
+              echo "::error::Docker Compose is not available on server."
+              exit 1
+            fi
 
-          $COMPOSE_CMD up -d --build
-          $COMPOSE_CMD restart caddy
-          $COMPOSE_CMD ps
-          REMOTE
-          )"
-          if [ "${SSH_AUTH_MODE}" = "key" ] && [ -f ~/.ssh/deploy_key ]; then
-            ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
-              "${target}" "bash -s -- '${DEPLOY_PATH}'" <<< "${remote_script}"
-          else
-            sshpass -e ssh -p "${SSH_PORT}" \
-              -o PreferredAuthentications=keyboard-interactive,password \
-              -o PubkeyAuthentication=no \
-              -o KbdInteractiveAuthentication=yes \
-              "${target}" "bash -s -- '${DEPLOY_PATH}'" <<< "${remote_script}"
-          fi
+            $COMPOSE_CMD up -d --build
+            $COMPOSE_CMD restart caddy
+            $COMPOSE_CMD ps
