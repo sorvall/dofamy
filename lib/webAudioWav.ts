@@ -63,8 +63,32 @@ async function decodeToMono16k(arrayBuffer: ArrayBuffer): Promise<Float32Array> 
   }
 }
 
-/** Скачивает webm/mp4/ogg blob URL и возвращает байты WAV (16 kHz, mono, 16-bit). */
-export async function loadWebRecordingAsWavBytes(uri: string): Promise<Uint8Array> {
+/** Читает blob:/data:/http URI без fetch (надёжнее под service worker и Safari). */
+async function readUriAsArrayBuffer(uri: string): Promise<ArrayBuffer> {
+  if (typeof XMLHttpRequest !== "undefined") {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", uri);
+      xhr.responseType = "arraybuffer";
+      xhr.onload = () => {
+        const buf = xhr.response;
+        if (buf && buf.byteLength > 0) {
+          resolve(buf);
+          return;
+        }
+        reject(new Error("Запись пустая — говорите дольше и проверьте микрофон."));
+      };
+      xhr.onerror = () => {
+        reject(
+          new Error(
+            "Не удалось прочитать файл записи (load failed). Обновите страницу (Cmd+Shift+R) и запишите снова."
+          )
+        );
+      };
+      xhr.send();
+    });
+  }
+
   const response = await fetch(uri);
   if (!response.ok) {
     throw new Error(`Не удалось прочитать запись (${response.status}).`);
@@ -73,6 +97,12 @@ export async function loadWebRecordingAsWavBytes(uri: string): Promise<Uint8Arra
   if (arrayBuffer.byteLength === 0) {
     throw new Error("Запись пустая — говорите дольше и проверьте микрофон.");
   }
+  return arrayBuffer;
+}
+
+/** Скачивает webm/mp4/ogg blob URL и возвращает байты WAV (16 kHz, mono, 16-bit). */
+export async function loadWebRecordingAsWavBytes(uri: string): Promise<Uint8Array> {
+  const arrayBuffer = await readUriAsArrayBuffer(uri);
 
   if (uri.includes(".wav") || uri.startsWith("data:audio/wav")) {
     return new Uint8Array(arrayBuffer);

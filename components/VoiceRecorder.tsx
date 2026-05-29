@@ -183,7 +183,7 @@ export function VoiceRecorder({
       setIsRecording(false);
       setLevel(0.2);
       if (uri) {
-        onRecordingComplete(uri);
+        await onRecordingComplete(uri);
       }
     } catch (e) {
       console.warn("stopAndFinish", e);

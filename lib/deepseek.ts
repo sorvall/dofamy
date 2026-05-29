@@ -40,6 +40,10 @@ export async function deepseekChat(options: {
       max_tokens: options.max_tokens,
       temperature: options.temperature ?? 0.4,
     }),
+  }).catch((e) => {
+    throw new Error(
+      `DeepSeek: ${e instanceof Error ? e.message : "load failed"} — проверьте сеть и EXPO_PUBLIC_DEEPSEEK_API_KEY в сборке.`
+    );
   });
 
   if (!response.ok) {

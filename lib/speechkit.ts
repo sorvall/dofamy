@@ -10,7 +10,10 @@ import {
   getYandexSpeechKitApiKey,
 } from "./runtimeEnv";
 
-const STT_SYNC_URL = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize";
+const STT_SYNC_URL =
+  Platform.OS === "web"
+    ? "/api/stt/recognize"
+    : "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize";
 
 /** Секрет из .env: либо только ключ, либо уже с префиксом `Api-Key ` / `Bearer `. */
 function buildApiKeyAuthorization(secret: string): string {
@@ -213,13 +216,24 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
   });
 
   const url = `${STT_SYNC_URL}?${params.toString()}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: authorization,
-    },
-    body: pcm as unknown as BodyInit,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: authorization,
+      },
+      body: pcm as unknown as BodyInit,
+    });
+  } catch (e) {
+    const hint =
+      Platform.OS === "web"
+        ? " Сеть или прокси SpeechKit (/api/stt) — обновите страницу после деплоя."
+        : "";
+    throw new Error(
+      `SpeechKit: ${e instanceof Error ? e.message : "load failed"}${hint}`
+    );
+  }
 
   const rawText = await response.text();
   if (!response.ok) {
