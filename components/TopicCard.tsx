@@ -2,7 +2,7 @@ import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   FadeIn,
@@ -96,6 +96,7 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
   const timerSoundEnabled = useSessionStore((s) => s.timerSoundEnabled);
   const toggleTimerSound = useSessionStore((s) => s.toggleTimerSound);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   /** Двойной тап открывает меню; одиночный тап открывает активность. */
   const suppressNextNavigateRef = useRef(false);
@@ -197,15 +198,13 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
 
   const confirmSwipeDelete = useCallback(() => {
     translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
-    Alert.alert(
-      "Удалить план?",
-      `«${topic.title}» будет убран из планов на сегодня.`,
-      [
-        { text: "Отмена", style: "cancel" },
-        { text: "Удалить", style: "destructive", onPress: swipeDeleteTopic },
-      ]
-    );
-  }, [swipeDeleteTopic, topic.title, translateX]);
+    setDeleteDialogOpen(true);
+  }, [translateX]);
+
+  const onConfirmDelete = useCallback(() => {
+    setDeleteDialogOpen(false);
+    swipeDeleteTopic();
+  }, [swipeDeleteTopic]);
 
   const openMenu = useCallback(() => {
     if (singleTapTimerRef.current) {
@@ -276,9 +275,10 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
         .onEnd((e) => {
           "worklet";
           const x = e.translationX;
-          if (x > SWIPE_COMMIT) {
+          const vx = e.velocityX;
+          if (x > SWIPE_COMMIT || (x > 32 && vx > 320)) {
             runOnJS(markDone)();
-          } else if (x < -SWIPE_COMMIT) {
+          } else if (x < -SWIPE_COMMIT || (x < -32 && vx < -320)) {
             runOnJS(confirmSwipeDelete)();
           }
           translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
@@ -323,6 +323,38 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
 
   return (
     <Animated.View entering={FadeInDown.delay(index * 70).springify().damping(18)}>
+      <Modal
+        visible={deleteDialogOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteDialogOpen(false)}
+      >
+        <Pressable style={styles.confirmBackdrop} onPress={() => setDeleteDialogOpen(false)}>
+          <Pressable style={styles.confirmCard} onPress={() => {}}>
+            <Text style={styles.confirmTitle}>Удалить план?</Text>
+            <Text style={styles.confirmMessage}>
+              «{topic.title}» будет убран из планов на сегодня.
+            </Text>
+            <View style={styles.confirmActions}>
+              <Pressable
+                onPress={() => setDeleteDialogOpen(false)}
+                style={styles.confirmCancelBtn}
+                accessibilityRole="button"
+              >
+                <Text style={styles.confirmCancelText}>Отмена</Text>
+              </Pressable>
+              <Pressable
+                onPress={onConfirmDelete}
+                style={styles.confirmDeleteBtn}
+                accessibilityRole="button"
+              >
+                <Text style={styles.confirmDeleteText}>Удалить</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <View className="relative mb-3">
         {menuOpen ? (
           <Pressable
@@ -589,5 +621,64 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: "rgba(8, 80, 65, 0.55)",
+  },
+  confirmBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(26, 25, 21, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  confirmCard: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#E8E5DC",
+  },
+  confirmTitle: {
+    fontFamily: "Unbounded_600SemiBold",
+    fontSize: 17,
+    color: INK,
+    letterSpacing: -0.3,
+  },
+  confirmMessage: {
+    marginTop: 10,
+    fontFamily: "GolosText_400Regular",
+    fontSize: 14,
+    lineHeight: 21,
+    color: "#8C8A82",
+  },
+  confirmActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 20,
+  },
+  confirmCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: "#ECEAE4",
+  },
+  confirmCancelText: {
+    fontFamily: "GolosText_600SemiBold",
+    fontSize: 14,
+    color: INK,
+  },
+  confirmDeleteBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: "#FAECE7",
+  },
+  confirmDeleteText: {
+    fontFamily: "GolosText_600SemiBold",
+    fontSize: 14,
+    color: "#993C1D",
   },
 });
