@@ -89,6 +89,7 @@ export default function TodayScreen() {
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
         >
           <ScreenHeader
             title="Сегодня"

@@ -2,7 +2,7 @@ import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   FadeIn,
@@ -20,6 +20,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { QualityPullBar } from "./QualityPullBar";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { TopicGlyph } from "./TopicGlyph";
 import { notifyTimerReached } from "../lib/localNotifications";
 import type { Topic, TopicStatus } from "../types/topic";
@@ -36,7 +37,7 @@ function emojiTileBg(index: number): string {
   if (v === 1) return "#E1F5EE";
   return "#FAECE7";
 }
-const SWIPE_COMMIT = 56;
+const SWIPE_COMMIT = 48;
 const SWIPE_MAX_DRAG = 100;
 const SWIPE_ACTION_W = 96;
 const TIMER_PRESETS_SEC = [15 * 60, 25 * 60, 45 * 60] as const;
@@ -196,10 +197,15 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
     removeTopic(topic.id);
   }, [removeTopic, topic.id]);
 
+  const openDeleteDialog = useCallback(() => {
+    setMenuOpen(false);
+    setDeleteDialogOpen(true);
+  }, []);
+
   const confirmSwipeDelete = useCallback(() => {
     translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
-    setDeleteDialogOpen(true);
-  }, [translateX]);
+    openDeleteDialog();
+  }, [openDeleteDialog, translateX]);
 
   const onConfirmDelete = useCallback(() => {
     setDeleteDialogOpen(false);
@@ -260,8 +266,9 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
   const swipeGesture = useMemo(
     () =>
       Gesture.Pan()
-        .activeOffsetX([-18, 18])
-        .failOffsetY([-14, 14])
+        .enabled(Platform.OS !== "web")
+        .activeOffsetX([-24, 24])
+        .failOffsetY([-5, 5])
         .onUpdate((e) => {
           "worklet";
           const x = e.translationX;
@@ -276,9 +283,9 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           "worklet";
           const x = e.translationX;
           const vx = e.velocityX;
-          if (x > SWIPE_COMMIT || (x > 32 && vx > 320)) {
+          if (x > SWIPE_COMMIT || (x > 28 && vx > 280)) {
             runOnJS(markDone)();
-          } else if (x < -SWIPE_COMMIT || (x < -32 && vx < -320)) {
+          } else if (x < -SWIPE_COMMIT || (x < -28 && vx < -280)) {
             runOnJS(confirmSwipeDelete)();
           }
           translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
@@ -286,7 +293,23 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
     [confirmSwipeDelete, markDone]
   );
 
-  const cardGestures = useMemo(() => swipeGesture, [swipeGesture]);
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(300)
+        .maxDistance(12)
+        .onEnd((_e, success) => {
+          if (success) {
+            runOnJS(handleCardPress)();
+          }
+        }),
+    [handleCardPress]
+  );
+
+  const cardGestures = useMemo(
+    () => Gesture.Exclusive(swipeGesture, tapGesture),
+    [swipeGesture, tapGesture]
+  );
 
   const onPostpone = useCallback(() => {
     postponeTopicToTomorrow(topic.id);
@@ -322,39 +345,16 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
   }, [totalTrackedSec]);
 
   return (
-    <Animated.View entering={FadeInDown.delay(index * 70).springify().damping(18)}>
-      <Modal
+    <>
+      <ConfirmDialog
         visible={deleteDialogOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDeleteDialogOpen(false)}
-      >
-        <Pressable style={styles.confirmBackdrop} onPress={() => setDeleteDialogOpen(false)}>
-          <Pressable style={styles.confirmCard} onPress={() => {}}>
-            <Text style={styles.confirmTitle}>Удалить план?</Text>
-            <Text style={styles.confirmMessage}>
-              «{topic.title}» будет убран из планов на сегодня.
-            </Text>
-            <View style={styles.confirmActions}>
-              <Pressable
-                onPress={() => setDeleteDialogOpen(false)}
-                style={styles.confirmCancelBtn}
-                accessibilityRole="button"
-              >
-                <Text style={styles.confirmCancelText}>Отмена</Text>
-              </Pressable>
-              <Pressable
-                onPress={onConfirmDelete}
-                style={styles.confirmDeleteBtn}
-                accessibilityRole="button"
-              >
-                <Text style={styles.confirmDeleteText}>Удалить</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        title="Удалить план?"
+        message={`«${topic.title}» будет убран из планов на сегодня.`}
+        onCancel={() => setDeleteDialogOpen(false)}
+        onConfirm={onConfirmDelete}
+      />
 
+      <Animated.View entering={FadeInDown.delay(index * 70).springify().damping(18)}>
       <View className="relative mb-3">
         {menuOpen ? (
           <Pressable
@@ -414,6 +414,15 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
             >
               <Text className="text-base font-semibold text-ink">Перенести на завтра</Text>
             </Pressable>
+            <View className="h-px bg-neutral-100" />
+            <Pressable
+              onPress={openDeleteDialog}
+              accessibilityRole="button"
+              accessibilityLabel="Удалить план"
+              className="px-5 py-3.5 active:bg-neutral-50"
+            >
+              <Text className="text-base font-semibold text-coral">Удалить план</Text>
+            </Pressable>
           </Animated.View>
         ) : null}
 
@@ -452,16 +461,26 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
               },
             ]}
           >
-            <Pressable
-              onPress={handleCardPress}
-              onPressIn={() => {
-                scale.value = withSpring(0.98, { damping: 15, stiffness: 280 });
-              }}
-              onPressOut={() => {
-                scale.value = withSpring(1, { damping: 14, stiffness: 260 });
-              }}
-              className="px-4 pb-4 pt-4"
-            >
+              <Pressable
+                onPressIn={() => {
+                  scale.value = withSpring(0.98, { damping: 15, stiffness: 280 });
+                }}
+                onPressOut={() => {
+                  scale.value = withSpring(1, { damping: 14, stiffness: 260 });
+                }}
+                className="px-4 pb-4 pt-4"
+              >
+              {!isDone ? (
+                <Pressable
+                  onPress={openDeleteDialog}
+                  hitSlop={10}
+                  accessibilityLabel="Удалить план"
+                  accessibilityRole="button"
+                  style={styles.deleteIconBtn}
+                >
+                  <MaterialIcons name="delete-outline" size={18} color="#993C1D" />
+                </Pressable>
+              ) : null}
               {isDone ? (
                 <>
                   <LinearGradient
@@ -559,7 +578,8 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
         </GestureDetector>
         </View>
       </View>
-    </Animated.View>
+      </Animated.View>
+    </>
   );
 }
 
@@ -622,63 +642,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "rgba(8, 80, 65, 0.55)",
   },
-  confirmBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(26, 25, 21, 0.45)",
+  deleteIconBtn: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 5,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    padding: 24,
-  },
-  confirmCard: {
-    width: "100%",
-    maxWidth: 340,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#E8E5DC",
-  },
-  confirmTitle: {
-    fontFamily: "Unbounded_600SemiBold",
-    fontSize: 17,
-    color: INK,
-    letterSpacing: -0.3,
-  },
-  confirmMessage: {
-    marginTop: 10,
-    fontFamily: "GolosText_400Regular",
-    fontSize: 14,
-    lineHeight: 21,
-    color: "#8C8A82",
-  },
-  confirmActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 20,
-  },
-  confirmCancelBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 14,
-    backgroundColor: "#ECEAE4",
-  },
-  confirmCancelText: {
-    fontFamily: "GolosText_600SemiBold",
-    fontSize: 14,
-    color: INK,
-  },
-  confirmDeleteBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 14,
     backgroundColor: "#FAECE7",
-  },
-  confirmDeleteText: {
-    fontFamily: "GolosText_600SemiBold",
-    fontSize: 14,
-    color: "#993C1D",
   },
 });
