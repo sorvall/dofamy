@@ -1,7 +1,11 @@
-# Добавьте в Caddyfile Urbanscore, если нужен домен с HTTPS на том же VPS:
+# HTTPS по домену dofamy.ru — добавьте этот блок в Caddyfile Urbanscore (порты 80/443):
 #
-# dofamy.example.com {
+# dofamy.ru {
 #     reverse_proxy 127.0.0.1:8082
+# }
+#
+# www.dofamy.ru {
+#     redir https://dofamy.ru{uri}
 # }
 
 {$SITE_DOMAIN} {

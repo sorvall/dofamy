@@ -1,5 +1,8 @@
-# На том же VPS, что Urbanscore: порты 80/443 заняты его Caddy.
-# Dofamy слушает WEB_PORT (по умолчанию 8082). HTTPS — через Caddy Urbanscore (см. Caddyfile.urbanscore-snippet).
+# На том же VPS, что Urbanscore (80/443 заняты им).
+#
+# HTTP:  http://IP:8082
+# HTTPS: https://IP:8443  (self-signed — в браузере «Дополнительно» → «Перейти»)
+# Позже dofamy.ru — блок в Caddyfile Urbanscore (см. Caddyfile).
 
 services:
   web:
@@ -7,3 +10,19 @@ services:
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-8082}:80"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./Caddyfile.ip:/etc/caddy/Caddyfile:ro
+      - caddy_ip_data:/data
+      - caddy_ip_config:/config
+    depends_on:
+      - web
+
+volumes:
+  caddy_ip_data:
+  caddy_ip_config:
