@@ -105,77 +105,133 @@ jobs:
             .env.example
           mv "${ARCHIVE_PATH}" dofamy-deploy.tgz
 
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y openssh-client sshpass
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          if [ -n "${SSH_PRIVATE_KEY}" ]; then
+            printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            echo "SSH key loaded ($(wc -l < ~/.ssh/deploy_key) lines)"
+          fi
+          ssh-keyscan -H "${SERVER_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Test SSH connection
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+        run: |
+          set -euo pipefail
+          target="${SERVER_USER}@${SERVER_HOST}"
+          if [ -f ~/.ssh/deploy_key ]; then
+            echo "Trying key auth → ${target}:${SSH_PORT}"
+            ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
+              "${target}" "echo OK: connected as \$(whoami)@\$(hostname)"
+          else
+            echo "Trying password auth → ${target}:${SSH_PORT}"
+            SSHPASS="${SSH_PASSWORD}" sshpass -e ssh -p "${SSH_PORT}" \
+              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+              -o StrictHostKeyChecking=yes \
+              "${target}" "echo OK: connected as \$(whoami)@\$(hostname)"
+          fi
+
       - name: Ensure deploy directory exists
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-          script: mkdir -p '${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}'
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
+          SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+        run: |
+          set -euo pipefail
+          target="${SERVER_USER}@${SERVER_HOST}"
+          if [ -f ~/.ssh/deploy_key ]; then
+            ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
+              "${target}" "mkdir -p '${DEPLOY_PATH}'"
+          else
+            SSHPASS="${SSH_PASSWORD}" sshpass -e ssh -p "${SSH_PORT}" \
+              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+              "${target}" "mkdir -p '${DEPLOY_PATH}'"
+          fi
 
       - name: Copy archive to remote server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-          source: "dofamy-deploy.tgz"
-          target: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
+          SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+        run: |
+          set -euo pipefail
+          target="${SERVER_USER}@${SERVER_HOST}:${DEPLOY_PATH}/dofamy-deploy.tgz"
+          if [ -f ~/.ssh/deploy_key ]; then
+            scp -i ~/.ssh/deploy_key -P "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
+              dofamy-deploy.tgz "${target}"
+          else
+            SSHPASS="${SSH_PASSWORD}" sshpass -e scp -P "${SSH_PORT}" \
+              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+              dofamy-deploy.tgz "${target}"
+          fi
 
       - name: Extract and run Docker Compose
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
-          script_stop: true
-          script: |
-            set -euo pipefail
-            DEPLOY_PATH='${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}'
-            test -n "$DEPLOY_PATH"
-            cd "$DEPLOY_PATH"
-            find . -mindepth 1 -maxdepth 1 \
-              ! -name '.env' \
-              ! -name 'dofamy-deploy.tgz' \
-              -exec rm -rf {} +
-            tar xzf dofamy-deploy.tgz
-            rm -f dofamy-deploy.tgz
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/root/dofamy' }}
+          SSH_PORT: ${{ env.SSH_PORT_DEPLOY != '' && env.SSH_PORT_DEPLOY || 22 }}
+        run: |
+          set -euo pipefail
+          target="${SERVER_USER}@${SERVER_HOST}"
+          remote_script="$(cat <<'REMOTE'
+          set -euo pipefail
+          DEPLOY_PATH="$1"
+          cd "$DEPLOY_PATH"
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name '.env' \
+            ! -name 'dofamy-deploy.tgz' \
+            -exec rm -rf {} +
+          tar xzf dofamy-deploy.tgz
+          rm -f dofamy-deploy.tgz
 
-            if [ ! -f .env ]; then
-              echo "::error::.env not found in ${DEPLOY_PATH}. Create ${DEPLOY_PATH}/.env on server (see .env.example)."
-              if [ -f .env.example ]; then
-                echo "::notice::Initialize: cp ${DEPLOY_PATH}/.env.example ${DEPLOY_PATH}/.env and set SITE_DOMAIN."
-              fi
-              exit 1
-            fi
+          if [ ! -f .env ]; then
+            echo "::error::.env not found in $1. Create $1/.env on server with SITE_DOMAIN=..."
+            exit 1
+          fi
 
-            if ! command -v docker >/dev/null 2>&1; then
-              echo "Docker not found. Installing via get.docker.com..."
-              if command -v curl >/dev/null 2>&1; then
-                curl -fsSL https://get.docker.com | sh
-              elif command -v wget >/dev/null 2>&1; then
-                wget -qO- https://get.docker.com | sh
-              else
-                echo "::error::Neither curl nor wget is available to install Docker."
-                exit 1
-              fi
-            fi
+          if ! command -v docker >/dev/null 2>&1; then
+            curl -fsSL https://get.docker.com | sh
+          fi
 
-            if docker compose version >/dev/null 2>&1; then
-              COMPOSE_CMD="docker compose"
-            elif command -v docker-compose >/dev/null 2>&1; then
-              COMPOSE_CMD="docker-compose"
-            else
-              echo "::error::Docker Compose is not available on server."
-              exit 1
-            fi
+          if docker compose version >/dev/null 2>&1; then
+            COMPOSE_CMD="docker compose"
+          elif command -v docker-compose >/dev/null 2>&1; then
+            COMPOSE_CMD="docker-compose"
+          else
+            echo "::error::Docker Compose is not available on server."
+            exit 1
+          fi
 
-            $COMPOSE_CMD up -d --build
-            $COMPOSE_CMD restart caddy
-            $COMPOSE_CMD ps
+          $COMPOSE_CMD up -d --build
+          $COMPOSE_CMD restart caddy
+          $COMPOSE_CMD ps
+          REMOTE
+          )"
+          if [ -f ~/.ssh/deploy_key ]; then
+            ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes \
+              "${target}" "bash -s -- '${DEPLOY_PATH}'" <<< "${remote_script}"
+          else
+            SSHPASS="${SSH_PASSWORD}" sshpass -e ssh -p "${SSH_PORT}" \
+              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+              "${target}" "bash -s -- '${DEPLOY_PATH}'" <<< "${remote_script}"
+          fi
