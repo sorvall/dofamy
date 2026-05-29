@@ -1,31 +1,9 @@
+# На том же VPS, что Urbanscore: порты 80/443 заняты его Caddy.
+# Dofamy слушает WEB_PORT (по умолчанию 8082). HTTPS — через Caddy Urbanscore (см. Caddyfile.urbanscore-snippet).
+
 services:
   web:
     build: .
     restart: unless-stopped
-    networks:
-      - dofamy
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    env_file:
-      - .env
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - web
-    networks:
-      - dofamy
-
-networks:
-  dofamy:
-    driver: bridge
-
-volumes:
-  caddy_data:
-  caddy_config:
+      - "${WEB_PORT:-8082}:80"

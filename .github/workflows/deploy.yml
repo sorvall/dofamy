@@ -140,9 +140,10 @@ jobs:
             rm -f dofamy-deploy.tgz
 
             if [ ! -f .env ]; then
+              echo "WEB_PORT=8082" > .env
               SITE_DOMAIN='${{ secrets.SITE_DOMAIN != '' && secrets.SITE_DOMAIN || secrets.SERVER_HOST }}'
-              echo "SITE_DOMAIN=${SITE_DOMAIN}" > .env
-              echo "::notice::Создан ${DEPLOY_PATH}/.env с SITE_DOMAIN=${SITE_DOMAIN}"
+              echo "SITE_DOMAIN=${SITE_DOMAIN}" >> .env
+              echo "::notice::Создан ${DEPLOY_PATH}/.env (WEB_PORT=8082, SITE_DOMAIN=${SITE_DOMAIN})"
             fi
 
             if ! command -v docker >/dev/null 2>&1; then
@@ -166,6 +167,7 @@ jobs:
               exit 1
             fi
 
+            $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
             $COMPOSE_CMD up -d --build
-            $COMPOSE_CMD restart caddy
             $COMPOSE_CMD ps
+            echo "::notice::Dofamy: http://${{ secrets.SERVER_HOST }}:8082 (порты 80/443 заняты Urbanscore)"

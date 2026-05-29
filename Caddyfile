@@ -1,4 +1,9 @@
-# Домен из .env на сервере: SITE_DOMAIN=dofamy.example.com
+# Добавьте в Caddyfile Urbanscore, если нужен домен с HTTPS на том же VPS:
+#
+# dofamy.example.com {
+#     reverse_proxy 127.0.0.1:8082
+# }
+
 {$SITE_DOMAIN} {
     reverse_proxy web:80
 }
