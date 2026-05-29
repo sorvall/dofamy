@@ -78,11 +78,12 @@ function buildTopicsExtractionPrompt(
 
   const parts = [
     "Ты помогаешь людям со СДВГ планировать день.",
-    "Из голосового сообщения выдели список активностей/задач. Верни ТОЛЬКО валидный JSON без пояснений, без markdown.",
-    "Если текст не содержит конкретных задач или планов — верни {\"topics\": []}.",
-    "Максимум 10 задач. Похожие объединяй, не дроби на микрозадачи. Сохраняй порядок как в тексте.",
+    "Из голосового сообщения выдели список активностей, целей и намерений. Верни ТОЛЬКО валидный JSON без пояснений, без markdown.",
+    "Пустой {\"topics\": []} — только если в тексте нет ни одной задачи/цели (приветствие, шутка, тишина, «не знаю что делать»).",
+    "Одна сказанная цель или проект = минимум одна карточка, даже если это крупная цель: «запустить стартап», «написать диплом», «успешный проект» — оформи как задачу на день (укороти title до 2–5 слов, детали в description).",
+    "Максимум 10 задач. Похожие объединяй, не дроби на микрозадачи без просьбы пользователя. Сохраняй порядок как в тексте.",
     "Для каждого элемента укажи уникальный id в формате UUID v4 (разные строки для разных задач, без повторов).",
-    "title — короткое действие или задача, 2-4 слова, на языке пользователя.",
+    "title — короткое действие или цель, 2–5 слов, на языке пользователя (можно глагол + объект: «Запустить стартап»).",
     'Поле description: ТОЛЬКО детали из самого текста — время, место, контекст, длительность если они были упомянуты. Нельзя копировать title или дублировать его. Если деталей не было — вернуть пустую строку "".',
     'Поле emoji: имя компонента из lucide-react-native в PascalCase (например Calendar, Target, Coffee). Не Unicode-эмодзи. Только реально существующие имена пакета.',
     "",
@@ -96,7 +97,7 @@ function buildTopicsExtractionPrompt(
     '- Запрещено: ложный позитив ("ты гений"), сравнение с другими, давление',
     `Уже существующие задачи на сегодня (не дублируй их): ${existing}`,
     "Пример структуры:",
-    '{"topics": [{"id": "550e8400-e29b-41d4-a716-446655440000", "title": "Почистить зубы", "description": "", "emoji": "Toothbrush", "boost": "2 минуты и свежесть"}]}',
+    '{"topics": [{"id": "550e8400-e29b-41d4-a716-446655440000", "title": "Запустить стартап", "description": "успешный проект", "emoji": "Rocket", "boost": "один шаг — уже план"}]}',
     "",
     "Текст:",
     trimmed,
@@ -111,6 +112,39 @@ function stripJsonFence(text: string): string {
     return fence[1].trim();
   }
   return trimmed;
+}
+
+function newTopicId(): string {
+  const c = globalThis as { crypto?: { randomUUID?: () => string } };
+  if (typeof c.crypto?.randomUUID === "function") {
+    return c.crypto.randomUUID();
+  }
+  return `t_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** Если модель вернула [], но в расшифровке есть смысл — одна карточка из текста. */
+function fallbackTopicFromTranscript(transcribedText: string): ParsedTopicPayload | null {
+  const raw = transcribedText.trim().replace(/\s+/g, " ");
+  if (raw.length < 6) return null;
+  if (/^(привет|здравствуй|спасибо|тест|окей|да|нет)[\s!.?]*$/i.test(raw)) return null;
+
+  const maxTitleLen = 42;
+  let title = raw;
+  let description = "";
+  if (raw.length > maxTitleLen) {
+    const cut = raw.slice(0, maxTitleLen);
+    const lastSpace = cut.lastIndexOf(" ");
+    title = lastSpace > 8 ? cut.slice(0, lastSpace) : cut;
+    description = raw.slice(title.length).trim().replace(/^[,.\s]+/, "");
+  }
+
+  return {
+    id: newTopicId(),
+    title: title.charAt(0).toUpperCase() + title.slice(1),
+    description,
+    emoji: "Rocket",
+    boost: "один шаг — уже план",
+  };
 }
 
 export async function extractTopicsFromTranscript(
@@ -142,11 +176,18 @@ export async function extractTopicsFromTranscript(
   }
 
   const topics = (parsed as { topics: ParsedTopicPayload[] }).topics;
-  return topics.map((t) => ({
+  const mapped = topics.map((t) => ({
     id: String(t.id),
     title: String(t.title),
     description: String(t.description),
     emoji: String(t.emoji),
     boost: typeof t.boost === "string" ? t.boost : "",
   }));
+
+  if (mapped.length > 0) {
+    return mapped;
+  }
+
+  const fallback = fallbackTopicFromTranscript(transcribedText);
+  return fallback ? [fallback] : [];
 }
