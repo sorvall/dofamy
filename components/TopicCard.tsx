@@ -38,6 +38,7 @@ function emojiTileBg(index: number): string {
 }
 const SWIPE_COMMIT = 56;
 const SWIPE_MAX_DRAG = 100;
+const SWIPE_ACTION_W = 96;
 const TIMER_PRESETS_SEC = [15 * 60, 25 * 60, 45 * 60] as const;
 
 function timerTargetLabelRu(sec?: number): string {
@@ -169,13 +170,21 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
     };
   });
 
-  const swipeLeftHintStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [0, 12, SWIPE_COMMIT], [0, 0.55, 1], Extrapolation.CLAMP),
-  }));
+  const doneRevealStyle = useAnimatedStyle(() => {
+    const x = translateX.value;
+    if (x <= 0) return { opacity: 0 };
+    return {
+      opacity: interpolate(x, [0, 14, SWIPE_COMMIT], [0, 0.6, 1], Extrapolation.CLAMP),
+    };
+  });
 
-  const swipeRightHintStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [0, -12, -SWIPE_COMMIT], [0, 0.55, 1], Extrapolation.CLAMP),
-  }));
+  const deleteRevealStyle = useAnimatedStyle(() => {
+    const x = translateX.value;
+    if (x >= 0) return { opacity: 0 };
+    return {
+      opacity: interpolate(x, [0, -14, -SWIPE_COMMIT], [0, 0.6, 1], Extrapolation.CLAMP),
+    };
+  });
 
   const markDone = useCallback(() => {
     setManualComplete(topic.id, true);
@@ -376,20 +385,24 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           </Animated.View>
         ) : null}
 
-        <View className="overflow-hidden rounded-card border border-line bg-white">
-        <View pointerEvents="none" className="absolute inset-0 overflow-hidden rounded-card">
+        <View className="overflow-hidden rounded-card border border-line bg-line">
+        <View pointerEvents="none" className="absolute inset-0 flex-row overflow-hidden rounded-card bg-line">
           <Animated.View
-            className="absolute bottom-0 left-0 top-0 w-[108px] justify-center pl-4"
-            style={[{ backgroundColor: "rgba(29, 158, 117, 0.94)" }, swipeLeftHintStyle]}
+            className="h-full items-center justify-center"
+            style={[
+              { width: SWIPE_ACTION_W, backgroundColor: "rgba(29, 158, 117, 0.96)" },
+              doneRevealStyle,
+            ]}
           >
             <Text style={styles.swipeHintLeft}>✓</Text>
             <Text style={styles.swipeHintLeftSub}>готово</Text>
           </Animated.View>
+          <View className="min-w-0 flex-1 bg-line" />
           <Animated.View
-            className="absolute bottom-0 right-0 top-0 w-[120px] items-center justify-center"
-            style={[{ backgroundColor: "#FAECE7" }, swipeRightHintStyle]}
+            className="h-full items-center justify-center"
+            style={[{ width: SWIPE_ACTION_W, backgroundColor: "#FAECE7" }, deleteRevealStyle]}
           >
-            <MaterialIcons name="delete-outline" size={30} color="#993C1D" />
+            <MaterialIcons name="delete-outline" size={28} color="#993C1D" />
             <Text style={styles.swipeDeleteLabel}>удалить</Text>
           </Animated.View>
         </View>
@@ -403,6 +416,7 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
               {
                 shadowColor: "#000",
                 shadowOffset: { width: 0, height: 8 },
+                borderRadius: 20,
               },
             ]}
           >
@@ -529,10 +543,11 @@ const styles = StyleSheet.create({
   },
   swipeHintLeftSub: {
     marginTop: 2,
-    fontSize: 13,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.85)",
-    letterSpacing: 0.3,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.9)",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
   swipeDeleteLabel: {
     marginTop: 4,
