@@ -1,6 +1,6 @@
 /**
  * Минимальный service worker для установки PWA (Android «Установить приложение»).
- * Без агрессивного кэша — всегда сеть, чтобы обновления доходили сразу.
+ * Без обработчика fetch — иначе ломаются blob: (голосовая запись) и API (SpeechKit, DeepSeek).
  */
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -8,8 +8,4 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener("fetch", (event) => {
-  event.respondWith(fetch(event.request));
 });
