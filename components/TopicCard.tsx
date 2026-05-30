@@ -1,8 +1,8 @@
 import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -84,11 +84,79 @@ interface TopicCardProps {
   onPress: () => void;
 }
 
+const DOUBLE_TAP_MS = 320;
+
+/** Двойной тап/клик открывает карточку; одиночный — нет (скролл не блокируем на web). */
+function CardDoubleTapBody({
+  children,
+  onDoubleOpen,
+  className,
+  disabled,
+}: {
+  children: ReactNode;
+  onDoubleOpen: () => void;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const lastTapRef = useRef(0);
+  const [host, setHost] = useState<HTMLElement | null>(null);
+
+  const setRef = useCallback((node: View | null) => {
+    if (Platform.OS !== "web") return;
+    setHost((node as unknown as HTMLElement | null) ?? null);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (Platform.OS !== "web" || !host || disabled) return;
+
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-no-card-open]")) return;
+
+      const now = Date.now();
+      if (now - lastTapRef.current < DOUBLE_TAP_MS) {
+        lastTapRef.current = 0;
+        onDoubleOpen();
+        return;
+      }
+      lastTapRef.current = now;
+    };
+
+    host.addEventListener("click", onClick);
+    return () => host.removeEventListener("click", onClick);
+  }, [disabled, host, onDoubleOpen]);
+
+  const handleNativePress = useCallback(() => {
+    if (disabled) return;
+    const now = Date.now();
+    if (now - lastTapRef.current < DOUBLE_TAP_MS) {
+      lastTapRef.current = 0;
+      onDoubleOpen();
+      return;
+    }
+    lastTapRef.current = now;
+  }, [disabled, onDoubleOpen]);
+
+  if (Platform.OS === "web") {
+    return (
+      <View ref={setRef} className={className}>
+        {children}
+      </View>
+    );
+  }
+
+  return (
+    <Pressable onPress={handleNativePress} unstable_pressDelay={300} className={className}>
+      {children}
+    </Pressable>
+  );
+}
+
 export function TopicCard({ topic, index, onPress }: TopicCardProps) {
   const removeTopic = useSessionStore((s) => s.removeTopic);
   const postponeTopicToTomorrow = useSessionStore((s) => s.postponeTopicToTomorrow);
   const startTopicTimer = useSessionStore((s) => s.startTopicTimer);
-  const stopTopicTimer = useSessionStore((s) => s.stopTopicTimer);
+  const finishTopicTimer = useSessionStore((s) => s.finishTopicTimer);
   const setTopicTimerTarget = useSessionStore((s) => s.setTopicTimerTarget);
   const markTopicTimerTargetNotified = useSessionStore((s) => s.markTopicTimerTargetNotified);
   const timerSoundEnabled = useSessionStore((s) => s.timerSoundEnabled);
@@ -201,29 +269,25 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
     setMenuOpen(true);
   }, []);
 
-  const handleOpen = useCallback(() => {
+  const handleDoubleOpen = useCallback(() => {
     if (menuOpen) return;
-    if (isTimerRunning) {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      stopTopicTimer(topic.id);
-      return;
-    }
     onPress();
-  }, [isTimerRunning, menuOpen, onPress, stopTopicTimer, topic.id]);
+  }, [menuOpen, onPress]);
+
+  const onPlayPress = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    startTopicTimer(topic.id);
+  }, [startTopicTimer, topic.id]);
+
+  const onStopPress = useCallback(() => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    finishTopicTimer(topic.id);
+  }, [finishTopicTimer, topic.id]);
 
   const onPostpone = useCallback(() => {
     postponeTopicToTomorrow(topic.id);
     setMenuOpen(false);
   }, [postponeTopicToTomorrow, topic.id]);
-
-  const onToggleTimerFromMenu = useCallback(() => {
-    if (isTimerRunning) {
-      stopTopicTimer(topic.id);
-    } else {
-      startTopicTimer(topic.id);
-    }
-    setMenuOpen(false);
-  }, [isTimerRunning, startTopicTimer, stopTopicTimer, topic.id]);
 
   const onSetTimerTargetFromMenu = useCallback(() => {
     const next = nextTimerTarget(timerTargetSec);
@@ -279,7 +343,11 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           </Pressable>
         </View>
       ) : null}
-      <View className="px-4 pb-4 pt-4">
+      <CardDoubleTapBody
+        onDoubleOpen={handleDoubleOpen}
+        disabled={menuOpen}
+        className="px-4 pb-4 pt-4"
+      >
         {isDone ? (
           <>
             <LinearGradient
@@ -320,12 +388,8 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
               </View>
             ) : null}
           </View>
-          <View className="items-end gap-1">
-            {isDone ? (
-              <View className="h-7 w-7 items-center justify-center rounded-full bg-success-light">
-                <Text style={{ fontSize: 12, color: SUCCESS, fontWeight: "800" }}>✓</Text>
-              </View>
-            ) : totalTrackedSec > 0 || isTimerRunning ? (
+          <View className="items-end gap-1.5">
+            {!isDone && (totalTrackedSec > 0 || isTimerRunning) ? (
               <View
                 className={`rounded-full px-2 py-1 ${isTimerRunning ? "bg-ink" : "bg-mist"}`}
                 style={isTimerRunning ? styles.timerBadgeRunning : undefined}
@@ -335,15 +399,27 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
                 </Text>
               </View>
             ) : null}
-            <Pressable
-              onPress={handleOpen}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Открыть задачу"
-              style={styles.openBtn}
-            >
-              <MaterialIcons name="chevron-right" size={24} color={INK} />
-            </Pressable>
+            {isDone ? (
+              <View className="h-8 w-8 items-center justify-center rounded-full bg-success-light">
+                <Text style={{ fontSize: 12, color: SUCCESS, fontWeight: "800" }}>✓</Text>
+              </View>
+            ) : (
+              <Pressable
+                onPress={isTimerRunning ? onStopPress : onPlayPress}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={isTimerRunning ? "Остановить и завершить задачу" : "Начать выполнение"}
+                style={[styles.playBtn, isTimerRunning ? styles.stopBtn : null]}
+                {...({ dataSet: { noCardOpen: "true" } } as object)}
+              >
+                <MaterialIcons
+                  name={isTimerRunning ? "stop" : "play-arrow"}
+                  size={isTimerRunning ? 20 : 24}
+                  color={isTimerRunning ? "#FFFFFF" : INK}
+                  style={isTimerRunning ? undefined : { marginLeft: 2 }}
+                />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -375,7 +451,7 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
             style={{ backgroundColor: YELLOW }}
           />
         ) : null}
-      </View>
+      </CardDoubleTapBody>
 
       {isDone ? (
         <View className="border-t border-line px-3.5 pb-4 pt-2">
@@ -431,17 +507,6 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
                 >
                   <Text className="text-base font-semibold text-ink">
                     Звук таймера: {timerSoundEnabled ? "вкл" : "выкл"}
-                  </Text>
-                </Pressable>
-                <View className="h-px bg-neutral-100" />
-                <Pressable
-                  onPress={onToggleTimerFromMenu}
-                  accessibilityRole="button"
-                  accessibilityLabel={isTimerRunning ? "Остановить таймер задачи" : "Начать задачу с таймером"}
-                  className="px-5 py-3.5 active:bg-neutral-50"
-                >
-                  <Text className="text-base font-semibold text-ink">
-                    {isTimerRunning ? "Остановить" : "Начать"}
                   </Text>
                 </Pressable>
                 <View className="h-px bg-neutral-100" />
@@ -581,12 +646,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#FAECE7",
   },
-  openBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  playBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F5F3EE",
+    backgroundColor: YELLOW,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  stopBtn: {
+    backgroundColor: INK,
   },
 });

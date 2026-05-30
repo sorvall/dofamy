@@ -55,6 +55,8 @@ interface SessionState {
   setQualityScore: (id: string, score: number | undefined) => void;
   startTopicTimer: (id: string) => void;
   stopTopicTimer: (id: string) => void;
+  /** Остановить таймер, зафиксировать время и отметить задачу выполненной. */
+  finishTopicTimer: (id: string) => void;
   setTopicTimerTarget: (id: string, targetSec: number | undefined) => void;
   markTopicTimerTargetNotified: (id: string) => void;
   toggleTimerSound: () => void;
@@ -197,6 +199,23 @@ export const useSessionStore = create<SessionState>()(
               ...t,
               timingStartedAtMs: undefined,
               timeSpentSec: nextSpent,
+            });
+          }),
+        }));
+      },
+      finishTopicTimer: (id) => {
+        const now = Date.now();
+        set((s) => ({
+          topics: s.topics.map((t) => {
+            if (t.id !== id) return t;
+            const start = t.timingStartedAtMs;
+            const elapsedSec = start ? Math.max(1, Math.round((now - start) / 1000)) : 0;
+            const nextSpent = (t.timeSpentSec ?? 0) + elapsedSec;
+            return mergeTopicStatus({
+              ...t,
+              timingStartedAtMs: undefined,
+              timeSpentSec: nextSpent,
+              manualComplete: true,
             });
           }),
         }));
