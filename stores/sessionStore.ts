@@ -47,7 +47,7 @@ interface SessionState {
   topics: Topic[];
   periodReports: SavedPeriodReport[];
   timerSoundEnabled: boolean;
-  appendTopicsFromClaude: (items: ClaudeTopicInput[]) => void;
+  appendTopicsFromClaude: (items: ClaudeTopicInput[], dateKey?: string) => void;
   setBeforePhoto: (id: string, uri: string) => void;
   setAfterPhoto: (id: string, uri: string) => void;
   setVoiceTranscript: (id: string, text: string) => void;
@@ -109,14 +109,12 @@ export const useSessionStore = create<SessionState>()(
       topics: [],
       periodReports: [],
       timerSoundEnabled: true,
-      appendTopicsFromClaude: (items) => {
-        const dateKey = todayDateKey();
+      appendTopicsFromClaude: (items, dateKey) => {
+        const dk = dateKey ?? todayDateKey();
         set((s) => ({
           topics: dedupeTopicsById([
             ...s.topics,
-            ...items.map((it) =>
-              topicFromClaude({ ...it, id: newTopicId() }, dateKey)
-            ),
+            ...items.map((it) => topicFromClaude({ ...it, id: newTopicId() }, dk)),
           ]),
         }));
       },

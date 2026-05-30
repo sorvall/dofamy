@@ -17,8 +17,12 @@ import { DayPickerCalendar } from "../../components/DayPickerCalendar";
 import { SCREEN_HORIZONTAL_PADDING } from "../../components/ScreenHeader";
 import { ReportMarkdownText } from "../../components/ReportMarkdownText";
 import { TopicCard } from "../../components/TopicCard";
+import { VoiceRecorder } from "../../components/VoiceRecorder";
 import { buildDayReportTasksJson, fetchDayClosingReflection } from "../../lib/dayReport";
-import { dateTitleRu, isTodayKey, todayDateKey } from "../../lib/dateKey";
+import { extractTopicsFromTranscript } from "../../lib/deepseek";
+import { datePillRu, dateTitleRu, futureDayLabelRu, isFutureKey, isTodayKey, todayDateKey } from "../../lib/dateKey";
+import { transcribeAudio } from "../../lib/speechkit";
+import { userAlert } from "../../lib/userAlert";
 import { useSessionStore } from "../../stores/sessionStore";
 import { enumerateDateKeys, fetchPeriodReflection } from "../../lib/periodReport";
 import type { SavedPeriodReport } from "../../stores/sessionStore";
@@ -41,7 +45,9 @@ export default function CalendarScreen() {
   const streakDays = useSessionStore((s) => s.getCurrentStreakDays());
   const periodReports = useSessionStore((s) => s.periodReports);
   const getTopicsByDateKey = useSessionStore((s) => s.getTopicsByDateKey);
+  const appendTopics = useSessionStore((s) => s.appendTopicsFromClaude);
   const savePeriodReport = useSessionStore((s) => s.savePeriodReport);
+  const [planBusy, setPlanBusy] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportText, setReportText] = useState<string | null>(null);
@@ -52,6 +58,41 @@ export default function CalendarScreen() {
   const [rangeEndDate, setRangeEndDate] = useState(todayDateKey());
   const [periodBusy, setPeriodBusy] = useState(false);
   const isToday = isTodayKey(selectedDateKey);
+  const isFuture = isFutureKey(selectedDateKey);
+
+  const planCaption = useMemo(() => {
+    const future = futureDayLabelRu(selectedDateKey);
+    if (future) return `Запишите план на ${future}`;
+    if (isToday) return "Запишите план на сегодня";
+    return `Запишите план на ${datePillRu(selectedDateKey)}`;
+  }, [isToday, selectedDateKey]);
+
+  const onVoicePlanDone = useCallback(
+    async (uri: string) => {
+      setPlanBusy(true);
+      try {
+        const text = await transcribeAudio(uri);
+        const parsed = await extractTopicsFromTranscript(
+          text,
+          topics.map((t) => ({ title: t.title }))
+        );
+        if (parsed.length === 0) {
+          userAlert(
+            "Задачи не найдены",
+            `Расшифровка: «${text.slice(0, 120)}${text.length > 120 ? "…" : ""}»\n\nНазовите хотя бы одну цель или дело на этот день.`
+          );
+          return;
+        }
+        appendTopics(parsed, selectedDateKey);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
+        userAlert("Не получилось обработать запись", msg);
+      } finally {
+        setPlanBusy(false);
+      }
+    },
+    [appendTopics, selectedDateKey, topics]
+  );
 
   const onDayReport = useCallback(async () => {
     if (topics.length === 0) {
@@ -211,13 +252,39 @@ export default function CalendarScreen() {
               />
             </View>
 
+            <View className="mt-6 pb-2">
+              {planBusy ? (
+                <Animated.View
+                  entering={FadeIn.duration(280)}
+                  className="min-h-[120px] items-center justify-center rounded-card border border-line bg-white p-6"
+                >
+                  <ActivityIndicator size="large" color="#1A1915" />
+                  <Text className="mt-4 text-center font-sans-medium text-sm text-muted">
+                    SpeechKit и разбор задач…
+                  </Text>
+                </Animated.View>
+              ) : (
+                <VoiceRecorder
+                  mode="toggle"
+                  variant="fab"
+                  fabCaption={planCaption}
+                  disabled={planBusy}
+                  onRecordingComplete={onVoicePlanDone}
+                  idleLabel="Записать план"
+                  recordingLabel="Говори планы вслух…"
+                />
+              )}
+            </View>
+
             {topics.length === 0 ? (
               <Animated.View
                 entering={FadeIn.delay(80)}
-                className="mt-8 rounded-card border border-dashed border-line bg-white/90 p-6"
+                className="mt-4 rounded-card border border-dashed border-line bg-white/90 p-6"
               >
                 <Text className="text-center font-sans text-sm leading-6 text-muted">
-                  На этот день нет карточек. Записать план голосом можно на вкладке «Сегодня».
+                  {isFuture
+                    ? "На этот день пока нет карточек. Нажми на микрофон выше и запиши план голосом."
+                    : "На этот день нет карточек. Запиши план голосом с помощью кнопки выше."}
                 </Text>
               </Animated.View>
             ) : (
@@ -249,8 +316,10 @@ export default function CalendarScreen() {
             <View className="mt-8">
               <Pressable
                 onPress={() => void onDayReport()}
-                disabled={reportBusy}
-                className={`items-center justify-center rounded-[18px] bg-ink py-4 ${reportBusy ? "opacity-60" : "active:opacity-90"}`}
+                disabled={reportBusy || isFuture || topics.length === 0}
+                className={`items-center justify-center rounded-[18px] bg-ink py-4 ${
+                  reportBusy || isFuture || topics.length === 0 ? "opacity-40" : "active:opacity-90"
+                }`}
                 style={{
                   shadowColor: "#000",
                   shadowOffset: { width: 0, height: 6 },
@@ -268,7 +337,9 @@ export default function CalendarScreen() {
                 )}
               </Pressable>
               <Text className="mt-1.5 text-center font-sans text-[10px] leading-snug text-muted">
-                ИИ разберёт карточки выбранного дня и напишет поддерживающий разбор.
+                {isFuture
+                  ? "Отчёт доступен только за прошедшие дни с карточками."
+                  : "ИИ разберёт карточки выбранного дня и напишет поддерживающий разбор."}
               </Text>
             </View>
           </>

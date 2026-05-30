@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { formatDateKey, parseDateKey, todayDateKey } from "../lib/dateKey";
+import { formatDateKey, isFutureKey, parseDateKey, todayDateKey } from "../lib/dateKey";
 
 const INK = "#1A1915";
 const WEEK = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
@@ -140,6 +140,7 @@ export function DayPickerCalendar({
           const dk = formatDateKey(new Date(cursorY, cursorM, day));
           const isSel = dk === selectedDateKey;
           const isToday = dk === todayK;
+          const isFuture = isFutureKey(dk);
           const hasMark = marked.has(dk);
           const isActiveDay = active.has(dk);
           return (
@@ -151,7 +152,9 @@ export function DayPickerCalendar({
                     ? "bg-accent"
                     : isToday
                       ? "border border-accent-dark/50"
-                      : "active:bg-mist"
+                      : isFuture
+                        ? "border border-dashed border-line active:bg-mist"
+                        : "active:bg-mist"
                 }`}
                 accessibilityState={{ selected: isSel }}
                 accessibilityLabel={`${day} ${monthTitleRu(cursorY, cursorM)}`}
