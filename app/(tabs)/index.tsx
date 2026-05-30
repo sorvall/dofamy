@@ -6,14 +6,15 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   View,
 } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { TopicCard } from "../../components/TopicCard";
+import { TouchScrollView } from "../../components/TouchScrollView";
 import { ScreenHeader, SCREEN_HORIZONTAL_PADDING } from "../../components/ScreenHeader";
 import { VoiceRecorder } from "../../components/VoiceRecorder";
 import { ReportMarkdownText } from "../../components/ReportMarkdownText";
@@ -79,9 +80,9 @@ export default function TodayScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-paper" edges={["top", "left", "right"]}>
-      <View className="flex-1">
-        <ScrollView
-          className="flex-1"
+      <View className="flex-1" style={Platform.OS === "web" ? { minHeight: 0 } : undefined}>
+        <TouchScrollView
+          style={Platform.OS === "web" ? { flex: 1, minHeight: 0 } : { flex: 1 }}
           contentContainerStyle={{
             flexGrow: 1,
             paddingBottom: 20,
@@ -152,7 +153,7 @@ export default function TodayScreen() {
               ))}
             </View>
           )}
-        </ScrollView>
+        </TouchScrollView>
 
         <View
           className="border-t border-line bg-paper pt-3 pb-2"

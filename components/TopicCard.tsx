@@ -1,9 +1,8 @@
 import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -11,7 +10,6 @@ import Animated, {
   Extrapolation,
   cancelAnimation,
   interpolate,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -87,7 +85,6 @@ interface TopicCardProps {
 }
 
 export function TopicCard({ topic, index, onPress }: TopicCardProps) {
-  const setManualComplete = useSessionStore((s) => s.setManualComplete);
   const removeTopic = useSessionStore((s) => s.removeTopic);
   const postponeTopicToTomorrow = useSessionStore((s) => s.postponeTopicToTomorrow);
   const startTopicTimer = useSessionStore((s) => s.startTopicTimer);
@@ -99,10 +96,6 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  /** Двойной тап открывает меню; одиночный тап открывает активность. */
-  const suppressNextNavigateRef = useRef(false);
-  const lastTapTsRef = useRef(0);
-  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const beforeDone = Boolean(topic.beforePhotoUri);
   const afterDone = Boolean(topic.afterPhotoUri);
   const isDone = topic.status === "done";
@@ -188,10 +181,6 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
     };
   });
 
-  const markDone = useCallback(() => {
-    setManualComplete(topic.id, true);
-  }, [setManualComplete, topic.id]);
-
   const swipeDeleteTopic = useCallback(() => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     removeTopic(topic.id);
@@ -202,114 +191,25 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
     setDeleteDialogOpen(true);
   }, []);
 
-  const confirmSwipeDelete = useCallback(() => {
-    translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
-    openDeleteDialog();
-  }, [openDeleteDialog, translateX]);
-
   const onConfirmDelete = useCallback(() => {
     setDeleteDialogOpen(false);
     swipeDeleteTopic();
   }, [swipeDeleteTopic]);
 
   const openMenu = useCallback(() => {
-    if (singleTapTimerRef.current) {
-      clearTimeout(singleTapTimerRef.current);
-      singleTapTimerRef.current = null;
-    }
-    suppressNextNavigateRef.current = true;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setMenuOpen(true);
   }, []);
 
-  useEffect(() => {
-    if (!menuOpen) {
-      suppressNextNavigateRef.current = false;
-    }
-    return () => {
-      if (singleTapTimerRef.current) {
-        clearTimeout(singleTapTimerRef.current);
-        singleTapTimerRef.current = null;
-      }
-    };
-  }, [menuOpen]);
-
-  const handleCardPress = useCallback(() => {
+  const handleOpen = useCallback(() => {
     if (menuOpen) return;
-
-    const now = Date.now();
-    if (now - lastTapTsRef.current < 260) {
-      lastTapTsRef.current = 0;
-      openMenu();
+    if (isTimerRunning) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      stopTopicTimer(topic.id);
       return;
     }
-
-    lastTapTsRef.current = now;
-    if (singleTapTimerRef.current) {
-      clearTimeout(singleTapTimerRef.current);
-    }
-    singleTapTimerRef.current = setTimeout(() => {
-      singleTapTimerRef.current = null;
-      if (suppressNextNavigateRef.current) {
-        suppressNextNavigateRef.current = false;
-        return;
-      }
-      if (isTimerRunning) {
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        stopTopicTimer(topic.id);
-        return;
-      }
-      onPress();
-    }, 270);
-  }, [isTimerRunning, menuOpen, onPress, openMenu, stopTopicTimer, topic.id]);
-
-  const swipeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(Platform.OS !== "web")
-        .activeOffsetX([-24, 24])
-        .failOffsetY([-5, 5])
-        .onUpdate((e) => {
-          "worklet";
-          const x = e.translationX;
-          translateX.value =
-            x > SWIPE_MAX_DRAG
-              ? SWIPE_MAX_DRAG + (x - SWIPE_MAX_DRAG) * 0.12
-              : x < -SWIPE_MAX_DRAG
-                ? -SWIPE_MAX_DRAG + (x + SWIPE_MAX_DRAG) * 0.12
-                : x;
-        })
-        .onEnd((e) => {
-          "worklet";
-          const x = e.translationX;
-          const vx = e.velocityX;
-          if (x > SWIPE_COMMIT || (x > 28 && vx > 280)) {
-            runOnJS(markDone)();
-          } else if (x < -SWIPE_COMMIT || (x < -28 && vx < -280)) {
-            runOnJS(confirmSwipeDelete)();
-          }
-          translateX.value = withSpring(0, { damping: 20, stiffness: 260 });
-        }),
-    [confirmSwipeDelete, markDone]
-  );
-
-  const tapGesture = useMemo(
-    () =>
-      Gesture.Tap()
-        .maxDuration(300)
-        .maxDistance(12)
-        .onEnd((_e, success) => {
-          if (success) {
-            runOnJS(handleCardPress)();
-          }
-        }),
-    [handleCardPress]
-  );
-
-  const cardGestures = useMemo(
-    () => Gesture.Exclusive(swipeGesture, tapGesture),
-    [swipeGesture, tapGesture]
-  );
+    onPress();
+  }, [isTimerRunning, menuOpen, onPress, stopTopicTimer, topic.id]);
 
   const onPostpone = useCallback(() => {
     postponeTopicToTomorrow(topic.id);
@@ -343,6 +243,147 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
     if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }, [totalTrackedSec]);
+
+  const cardInner = (
+    <Animated.View
+      className="overflow-hidden rounded-card bg-white"
+      style={[
+        cardMotionStyle,
+        styles.cardSurface,
+        {
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 8 },
+          borderRadius: 20,
+        },
+      ]}
+    >
+      {!isDone ? (
+        <View style={styles.topActions}>
+          <Pressable
+            onPress={openMenu}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Меню задачи"
+            style={styles.iconBtn}
+          >
+            <MaterialIcons name="more-vert" size={18} color={INK} />
+          </Pressable>
+          <Pressable
+            onPress={openDeleteDialog}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Удалить план"
+            style={styles.iconBtnDanger}
+          >
+            <MaterialIcons name="delete-outline" size={18} color="#993C1D" />
+          </Pressable>
+        </View>
+      ) : null}
+      <View className="px-4 pb-4 pt-4">
+        {isDone ? (
+          <>
+            <LinearGradient
+              pointerEvents="none"
+              colors={["rgba(29, 158, 117, 0.12)", "rgba(255, 255, 255, 0.04)", "rgba(29, 158, 117, 0.08)"]}
+              locations={[0, 0.42, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[StyleSheet.absoluteFillObject, styles.doneWash]}
+            />
+            <View pointerEvents="none" style={styles.doneBadge}>
+              <Text style={styles.doneBadgeText}>✓</Text>
+            </View>
+          </>
+        ) : null}
+
+        <View className="flex-row items-start gap-2.5">
+          <View
+            className="h-[38px] w-[38px] items-center justify-center rounded-xl"
+            style={{ backgroundColor: emojiTileBg(index) }}
+          >
+            <TopicGlyph glyph={topic.emoji} color={INK} size={22} />
+          </View>
+          <View className="min-w-0 flex-1">
+            <Text
+              className="font-display text-[15px] font-medium leading-5 text-ink"
+              style={{ letterSpacing: -0.2 }}
+              numberOfLines={2}
+            >
+              {topic.title}
+            </Text>
+            <Text className="mt-0.5 font-sans text-[11px] leading-[15px] text-muted" numberOfLines={2}>
+              {topic.description}
+            </Text>
+            {isTimerRunning && boostText ? (
+              <View className="mt-1 self-start rounded-full bg-amber-soft px-2 py-0.5">
+                <Text className="font-sans-semibold text-[10px] text-amber-ink">{boostText}</Text>
+              </View>
+            ) : null}
+          </View>
+          <View className="items-end gap-1">
+            {isDone ? (
+              <View className="h-7 w-7 items-center justify-center rounded-full bg-success-light">
+                <Text style={{ fontSize: 12, color: SUCCESS, fontWeight: "800" }}>✓</Text>
+              </View>
+            ) : totalTrackedSec > 0 || isTimerRunning ? (
+              <View
+                className={`rounded-full px-2 py-1 ${isTimerRunning ? "bg-ink" : "bg-mist"}`}
+                style={isTimerRunning ? styles.timerBadgeRunning : undefined}
+              >
+                <Text className={`font-sans-semibold text-[10px] ${isTimerRunning ? "text-white" : "text-ink"}`}>
+                  {timerLabel}
+                </Text>
+              </View>
+            ) : null}
+            <Pressable
+              onPress={handleOpen}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Открыть задачу"
+              style={styles.openBtn}
+            >
+              <MaterialIcons name="chevron-right" size={24} color={INK} />
+            </Pressable>
+          </View>
+        </View>
+
+        <View className="mt-3 flex-row items-center justify-between gap-3 border-t border-line/80 pt-3">
+          <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-x-3 gap-y-1">
+            <View className="flex-row items-center gap-1">
+              <View
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: beforeDone ? SUCCESS : DOT_OFF }}
+              />
+              <Text className="font-sans text-[10px] text-muted">фото до</Text>
+            </View>
+            <View className="flex-row items-center gap-1">
+              <View
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: afterDone ? SUCCESS : DOT_OFF }}
+              />
+              <Text className="font-sans text-[10px] text-muted">фото после</Text>
+            </View>
+          </View>
+          <View className={`shrink-0 rounded-[10px] px-2.5 py-1 ${statusPillClass(topic.status)}`}>
+            <Text className="font-sans-medium text-[10px] font-medium">{statusLabelRu(topic.status)}</Text>
+          </View>
+        </View>
+
+        {topic.status === "in_progress" ? (
+          <View
+            className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-[20px]"
+            style={{ backgroundColor: YELLOW }}
+          />
+        ) : null}
+      </View>
+
+      {isDone ? (
+        <View className="border-t border-line px-3.5 pb-4 pt-2">
+          <QualityPullBar topicId={topic.id} score={topic.qualityScore} />
+        </View>
+      ) : null}
+    </Animated.View>
+  );
 
   return (
     <>
@@ -448,134 +489,7 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           </Animated.View>
         </View>
 
-        <GestureDetector gesture={cardGestures}>
-          <Animated.View
-            className="overflow-hidden rounded-card bg-white"
-            style={[
-              cardMotionStyle,
-              styles.cardSurface,
-              {
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 8 },
-                borderRadius: 20,
-              },
-            ]}
-          >
-              <Pressable
-                onPressIn={() => {
-                  scale.value = withSpring(0.98, { damping: 15, stiffness: 280 });
-                }}
-                onPressOut={() => {
-                  scale.value = withSpring(1, { damping: 14, stiffness: 260 });
-                }}
-                className="px-4 pb-4 pt-4"
-              >
-              {!isDone ? (
-                <Pressable
-                  onPress={openDeleteDialog}
-                  hitSlop={10}
-                  accessibilityLabel="Удалить план"
-                  accessibilityRole="button"
-                  style={styles.deleteIconBtn}
-                >
-                  <MaterialIcons name="delete-outline" size={18} color="#993C1D" />
-                </Pressable>
-              ) : null}
-              {isDone ? (
-                <>
-                  <LinearGradient
-                    pointerEvents="none"
-                    colors={["rgba(29, 158, 117, 0.12)", "rgba(255, 255, 255, 0.04)", "rgba(29, 158, 117, 0.08)"]}
-                    locations={[0, 0.42, 1]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[StyleSheet.absoluteFillObject, styles.doneWash]}
-                  />
-                  <View pointerEvents="none" style={styles.doneBadge}>
-                    <Text style={styles.doneBadgeText}>✓</Text>
-                  </View>
-                </>
-              ) : null}
-
-              <View className="flex-row items-start gap-2.5">
-                <View
-                  className="h-[38px] w-[38px] items-center justify-center rounded-xl"
-                  style={{ backgroundColor: emojiTileBg(index) }}
-                >
-                  <TopicGlyph glyph={topic.emoji} color={INK} size={22} />
-                </View>
-                <View className="min-w-0 flex-1">
-                  <Text
-                    className="font-display text-[15px] font-medium leading-5 text-ink"
-                    style={{ letterSpacing: -0.2 }}
-                    numberOfLines={2}
-                  >
-                    {topic.title}
-                  </Text>
-                  <Text className="mt-0.5 font-sans text-[11px] leading-[15px] text-muted" numberOfLines={2}>
-                    {topic.description}
-                  </Text>
-                  {isTimerRunning && boostText ? (
-                    <View className="mt-1 self-start rounded-full bg-amber-soft px-2 py-0.5">
-                      <Text className="font-sans-semibold text-[10px] text-amber-ink">{boostText}</Text>
-                    </View>
-                  ) : null}
-                </View>
-                {isDone ? (
-                  <View className="h-7 w-7 items-center justify-center rounded-full bg-success-light">
-                    <Text style={{ fontSize: 12, color: SUCCESS, fontWeight: "800" }}>✓</Text>
-                  </View>
-                ) : totalTrackedSec > 0 || isTimerRunning ? (
-                  <View
-                    className={`rounded-full px-2 py-1 ${isTimerRunning ? "bg-ink" : "bg-mist"}`}
-                    style={isTimerRunning ? styles.timerBadgeRunning : undefined}
-                  >
-                    <Text className={`font-sans-semibold text-[10px] ${isTimerRunning ? "text-white" : "text-ink"}`}>
-                      {timerLabel}
-                    </Text>
-                  </View>
-                ) : (
-                  <View className="h-7 w-7 rounded-full bg-mist" />
-                )}
-              </View>
-
-              <View className="mt-3 flex-row items-center justify-between gap-3 border-t border-line/80 pt-3">
-                <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-x-3 gap-y-1">
-                  <View className="flex-row items-center gap-1">
-                    <View
-                      className="h-1.5 w-1.5 rounded-full"
-                      style={{ backgroundColor: beforeDone ? SUCCESS : DOT_OFF }}
-                    />
-                    <Text className="font-sans text-[10px] text-muted">фото до</Text>
-                  </View>
-                  <View className="flex-row items-center gap-1">
-                    <View
-                      className="h-1.5 w-1.5 rounded-full"
-                      style={{ backgroundColor: afterDone ? SUCCESS : DOT_OFF }}
-                    />
-                    <Text className="font-sans text-[10px] text-muted">фото после</Text>
-                  </View>
-                </View>
-                <View className={`shrink-0 rounded-[10px] px-2.5 py-1 ${statusPillClass(topic.status)}`}>
-                  <Text className="font-sans-medium text-[10px] font-medium">{statusLabelRu(topic.status)}</Text>
-                </View>
-              </View>
-
-              {topic.status === "in_progress" ? (
-                <View
-                  className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-[20px]"
-                  style={{ backgroundColor: YELLOW }}
-                />
-              ) : null}
-            </Pressable>
-
-            {isDone ? (
-              <View className="border-t border-line px-3.5 pb-4 pt-2">
-                <QualityPullBar topicId={topic.id} score={topic.qualityScore} />
-              </View>
-            ) : null}
-          </Animated.View>
-        </GestureDetector>
+        {cardInner}
         </View>
       </View>
       </Animated.View>
@@ -642,16 +556,37 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "rgba(8, 80, 65, 0.55)",
   },
-  deleteIconBtn: {
+  topActions: {
     position: "absolute",
-    top: 12,
-    right: 12,
+    top: 10,
+    right: 10,
     zIndex: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5F3EE",
+  },
+  iconBtnDanger: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FAECE7",
+  },
+  openBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5F3EE",
   },
 });

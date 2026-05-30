@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 
@@ -137,9 +137,48 @@ export function QualityPullBar({ topicId, score }: QualityPullBarProps) {
       ) : (
         <View style={styles.hintSpacerLocked} />
       )}
-      <GestureDetector gesture={panGesture}>
+      {Platform.OS !== "web" ? (
+        <GestureDetector gesture={panGesture}>
+          <View
+            style={[styles.track, locked && styles.trackDisabled]}
+            collapsable={false}
+            onLayout={onTrackLayout}
+            pointerEvents={locked ? "none" : "auto"}
+          >
+            <View style={styles.trackBg} />
+            <Animated.View style={[styles.fillClip, fillStyle]}>
+              <LinearGradient
+                colors={["rgba(29, 158, 117, 0.42)", "rgba(245, 200, 66, 0.55)"]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFill}
+              />
+            </Animated.View>
+            <Animated.View style={[styles.thumb, thumbStyle, (showCheckThumb || thumbVisualLocked) && styles.thumbCheck]}>
+              {showCheckThumb ? (
+                <Pressable
+                  onPress={onConfirmPress}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Зафиксировать оценку качества"
+                  style={styles.thumbCheckInner}
+                >
+                  <MaterialIcons name="check" size={18} color="#FFFFFF" />
+                </Pressable>
+              ) : thumbVisualLocked ? (
+                <View style={styles.thumbCheckInner}>
+                  <MaterialIcons name="check" size={18} color="#FFFFFF" />
+                </View>
+              ) : (
+                <View style={styles.thumbInner} />
+              )}
+            </Animated.View>
+          </View>
+        </GestureDetector>
+      ) : (
         <View
           style={[styles.track, locked && styles.trackDisabled]}
+          className="quality-track"
           collapsable={false}
           onLayout={onTrackLayout}
           pointerEvents={locked ? "none" : "auto"}
@@ -173,7 +212,7 @@ export function QualityPullBar({ topicId, score }: QualityPullBarProps) {
             )}
           </Animated.View>
         </View>
-      </GestureDetector>
+      )}
       <View style={styles.metaRow}>
         <Text style={[styles.label, locked && styles.metaMuted]}>{label}</Text>
         <Text style={[styles.percent, locked && styles.metaMuted]}>{pct}%</Text>
