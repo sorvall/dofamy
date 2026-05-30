@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
-import { QualityPullBar } from "./QualityPullBar";
+import { QualityStarRating } from "./QualityStarRating";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { TopicGlyph } from "./TopicGlyph";
 import { notifyTimerReached } from "../lib/localNotifications";
@@ -455,7 +455,7 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
 
       {isDone ? (
         <View className="border-t border-line px-3.5 pb-4 pt-2">
-          <QualityPullBar topicId={topic.id} score={topic.qualityScore} />
+          <QualityStarRating topicId={topic.id} score={topic.qualityScore} />
         </View>
       ) : null}
     </Animated.View>
