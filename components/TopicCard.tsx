@@ -321,28 +321,6 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
         },
       ]}
     >
-      {!isDone ? (
-        <View style={styles.topActions}>
-          <Pressable
-            onPress={openMenu}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Меню задачи"
-            style={styles.iconBtn}
-          >
-            <MaterialIcons name="more-vert" size={18} color={INK} />
-          </Pressable>
-          <Pressable
-            onPress={openDeleteDialog}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Удалить план"
-            style={styles.iconBtnDanger}
-          >
-            <MaterialIcons name="delete-outline" size={18} color="#993C1D" />
-          </Pressable>
-        </View>
-      ) : null}
       <CardDoubleTapBody
         onDoubleOpen={handleDoubleOpen}
         disabled={menuOpen}
@@ -365,8 +343,29 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
         ) : null}
 
         <View className="flex-row items-start gap-2.5">
+          {!isDone ? (
+            <Pressable
+              onPress={isTimerRunning ? onStopPress : onPlayPress}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={isTimerRunning ? "Остановить и завершить задачу" : "Начать выполнение"}
+              style={[styles.playBtn, isTimerRunning ? styles.stopBtn : null]}
+              {...({ dataSet: { noCardOpen: "true" } } as object)}
+            >
+              <MaterialIcons
+                name={isTimerRunning ? "stop" : "play-arrow"}
+                size={isTimerRunning ? 20 : 24}
+                color={isTimerRunning ? "#FFFFFF" : INK}
+                style={isTimerRunning ? undefined : { marginLeft: 2 }}
+              />
+            </Pressable>
+          ) : (
+            <View className="mt-0.5 h-10 w-10 items-center justify-center rounded-full bg-success-light">
+              <Text style={{ fontSize: 14, color: SUCCESS, fontWeight: "800" }}>✓</Text>
+            </View>
+          )}
           <View
-            className="h-[38px] w-[38px] items-center justify-center rounded-xl"
+            className="h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl"
             style={{ backgroundColor: emojiTileBg(index) }}
           >
             <TopicGlyph glyph={topic.emoji} color={INK} size={22} />
@@ -387,11 +386,9 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
                 <Text className="font-sans-semibold text-[10px] text-amber-ink">{boostText}</Text>
               </View>
             ) : null}
-          </View>
-          <View className="items-end gap-1.5">
             {!isDone && (totalTrackedSec > 0 || isTimerRunning) ? (
               <View
-                className={`rounded-full px-2 py-1 ${isTimerRunning ? "bg-ink" : "bg-mist"}`}
+                className={`mt-1.5 self-start rounded-full px-2 py-0.5 ${isTimerRunning ? "bg-ink" : "bg-mist"}`}
                 style={isTimerRunning ? styles.timerBadgeRunning : undefined}
               >
                 <Text className={`font-sans-semibold text-[10px] ${isTimerRunning ? "text-white" : "text-ink"}`}>
@@ -399,28 +396,31 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
                 </Text>
               </View>
             ) : null}
-            {isDone ? (
-              <View className="h-8 w-8 items-center justify-center rounded-full bg-success-light">
-                <Text style={{ fontSize: 12, color: SUCCESS, fontWeight: "800" }}>✓</Text>
-              </View>
-            ) : (
+          </View>
+          {!isDone ? (
+            <View style={styles.cardActions}>
               <Pressable
-                onPress={isTimerRunning ? onStopPress : onPlayPress}
+                onPress={openMenu}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={isTimerRunning ? "Остановить и завершить задачу" : "Начать выполнение"}
-                style={[styles.playBtn, isTimerRunning ? styles.stopBtn : null]}
+                accessibilityLabel="Меню задачи"
+                style={styles.iconBtn}
                 {...({ dataSet: { noCardOpen: "true" } } as object)}
               >
-                <MaterialIcons
-                  name={isTimerRunning ? "stop" : "play-arrow"}
-                  size={isTimerRunning ? 20 : 24}
-                  color={isTimerRunning ? "#FFFFFF" : INK}
-                  style={isTimerRunning ? undefined : { marginLeft: 2 }}
-                />
+                <MaterialIcons name="more-vert" size={18} color={INK} />
               </Pressable>
-            )}
-          </View>
+              <Pressable
+                onPress={openDeleteDialog}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Удалить план"
+                style={styles.iconBtnDanger}
+                {...({ dataSet: { noCardOpen: "true" } } as object)}
+              >
+                <MaterialIcons name="delete-outline" size={18} color="#993C1D" />
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         <View className="mt-3 flex-row items-center justify-between gap-3 border-t border-line/80 pt-3">
@@ -621,14 +621,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "rgba(8, 80, 65, 0.55)",
   },
-  topActions: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    zIndex: 5,
-    flexDirection: "row",
+  cardActions: {
+    flexDirection: "column",
     alignItems: "center",
     gap: 6,
+    marginTop: 2,
+    marginLeft: 2,
   },
   iconBtn: {
     width: 32,
@@ -653,6 +651,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: YELLOW,
+    flexShrink: 0,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.12,
