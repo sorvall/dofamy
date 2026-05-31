@@ -1,44 +1,169 @@
 <!DOCTYPE html>
-<html lang="%LANG_ISO_CODE%">
+<html lang="ru">
   <head>
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
     <meta name="theme-color" content="#F5F3EE" />
-    <meta name="description" content="Фокус, якоря задач и голосовые отчёты" />
+    <meta name="color-scheme" content="light" />
+
+    <title>Dofamy — планировщик дня голосом и якоря задач</title>
+    <meta
+      name="description"
+      content="Dofamy — веб-приложение для планирования дня голосом, якорных фото «до» и «после», таймеров задач и ИИ-отчётов. Фокус, продуктивность и спокойное закрытие дня."
+    />
+    <meta
+      name="keywords"
+      content="dofamy, планировщик дня, голосовой планировщик, задачи на сегодня, продуктивность, фокус, якоря задач, план на день голосом, таймер задач, отчёт за день"
+    />
+    <meta name="author" content="Dofamy" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="yandex-verification" content="e82b4d751f1b10ad" />
+    <link rel="canonical" href="https://dofamy.ru/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Dofamy" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:url" content="https://dofamy.ru/" />
+    <meta property="og:title" content="Dofamy — планировщик дня голосом и якоря задач" />
+    <meta
+      property="og:description"
+      content="Планируйте день голосом, фиксируйте задачи якорными фото и получайте ИИ-отчёты. Бесплатное веб-приложение для фокуса."
+    />
+    <meta property="og:image" content="https://dofamy.ru/logo512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Логотип Dofamy — якорь фокуса" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Dofamy — планировщик дня голосом и якоря задач" />
+    <meta
+      name="twitter:description"
+      content="Голосовые планы, якоря задач, таймеры и ИИ-отчёты за день — в одном приложении."
+    />
+    <meta name="twitter:image" content="https://dofamy.ru/logo512.png" />
+
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Dofamy" />
+    <meta name="application-name" content="Dofamy" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/favicon.png" type="image/png" />
     <link rel="apple-touch-icon" href="/logo192.png" />
-    <title>%WEB_TITLE%</title>
-    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Dofamy",
+        "alternateName": "Дофами",
+        "url": "https://dofamy.ru/",
+        "description": "Веб-приложение для планирования дня голосом, якорных фото задач и ИИ-отчётов за день.",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Web, iOS, Android",
+        "browserRequirements": "Requires JavaScript. Requires HTML5.",
+        "inLanguage": "ru-RU",
+        "isAccessibleForFree": true,
+        "image": "https://dofamy.ru/logo512.png",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "RUB"
+        },
+        "featureList": [
+          "Голосовое планирование дня",
+          "Якорные фото до и после задачи",
+          "Таймеры и фокус на задаче",
+          "ИИ-отчёт за день",
+          "Календарь планов"
+        ]
+      }
+    </script>
+
     <style id="expo-reset">
-      /* These styles make the body full-height */
       html,
       body {
         height: 100%;
       }
-      /* These styles disable body scrolling if you are using <ScrollView> */
       body {
         overflow: hidden;
+        margin: 0;
+        background: #f5f3ee;
       }
-      /* These styles make the root element full-height */
       #root {
         display: flex;
         height: 100%;
         flex: 1;
       }
+      #dofamy-seo {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        padding: 24px 20px 32px;
+        max-width: 720px;
+        margin: 0 auto;
+        color: #1a1915;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        line-height: 1.55;
+        box-sizing: border-box;
+        z-index: 0;
+      }
+      #dofamy-seo h1 {
+        margin: 0 0 12px;
+        font-size: 1.35rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      #dofamy-seo p {
+        margin: 0 0 10px;
+        font-size: 0.95rem;
+        color: #5c5a54;
+      }
+      #dofamy-seo ul {
+        margin: 0;
+        padding-left: 1.2rem;
+        color: #5c5a54;
+        font-size: 0.92rem;
+      }
+      body.app-ready #dofamy-seo {
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        height: 1px;
+        overflow: hidden;
+        position: absolute;
+        white-space: nowrap;
+        width: 1px;
+      }
     </style>
   </head>
 
   <body>
-    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <article id="dofamy-seo">
+      <h1>Dofamy — планировщик дня голосом и якоря задач</h1>
+      <p>
+        Dofamy помогает спокойно планировать день: записывайте планы голосом, ведите задачи карточками,
+        фиксируйте прогресс якорными фото «до» и «после», запускайте таймер фокуса и закрывайте день
+        с поддерживающим ИИ-отчётом.
+      </p>
+      <ul>
+        <li>Голосовой план на сегодня и на любой день в календаре</li>
+        <li>Якорные фото и оценка качества выполнения</li>
+        <li>Таймеры 15, 25 и 45 минут для глубокой работы</li>
+        <li>Отчёты за день, неделю и период</li>
+      </ul>
+      <p>Откройте приложение в браузере или добавьте Dofamy на главный экран телефона.</p>
+    </article>
+
     <noscript>
-      You need to enable JavaScript to run this app.
+      <p>
+        Для работы Dofamy нужен JavaScript. Включите его в настройках браузера и откройте
+        <a href="https://dofamy.ru/">dofamy.ru</a> снова.
+      </p>
     </noscript>
-    <!-- The root element for your Expo app. -->
+
     <div id="root"></div>
     <script>
       if ("serviceWorker" in navigator) {
@@ -49,6 +174,21 @@
             .catch(() => {});
         });
       }
+      window.addEventListener("DOMContentLoaded", () => {
+        var root = document.getElementById("root");
+        if (!root) return;
+        var markReady = function () {
+          document.body.classList.add("app-ready");
+        };
+        var obs = new MutationObserver(function () {
+          if (root.childNodes.length > 0) {
+            markReady();
+            obs.disconnect();
+          }
+        });
+        obs.observe(root, { childList: true, subtree: true });
+        setTimeout(markReady, 8000);
+      });
     </script>
   </body>
 </html>

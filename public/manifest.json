@@ -1,8 +1,9 @@
 {
   "short_name": "Dofamy",
-  "name": "Dofamy",
-  "description": "Фокус, якоря задач и голосовые отчёты",
+  "name": "Dofamy — планировщик дня голосом",
+  "description": "Планирование дня голосом, якоря задач, таймеры и ИИ-отчёты за день",
   "lang": "ru",
+  "id": "/",
   "icons": [
     {
       "src": "favicon.png",
@@ -22,10 +23,11 @@
       "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
-  "scope": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#F5F3EE",
-  "background_color": "#F5F3EE"
+  "background_color": "#F5F3EE",
+  "categories": ["productivity", "utilities"]
 }

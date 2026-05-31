@@ -9,6 +9,7 @@ import { Unbounded_500Medium, Unbounded_600SemiBold } from "@expo-google-fonts/u
 import { useFonts } from "expo-font";
 import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
+import Head from "expo-router/head";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
@@ -17,6 +18,13 @@ import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import "../global.css";
+import {
+  SITE_DESCRIPTION,
+  SITE_KEYWORDS,
+  SITE_OG_IMAGE,
+  SITE_TITLE,
+  SITE_URL,
+} from "../lib/seoSite";
 
 SplashScreen.preventAutoHideAsync();
 if (Platform.OS !== "web") {
@@ -58,6 +66,18 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: FA_PAPER }}>
+      {Platform.OS === "web" ? (
+        <Head>
+          <title>{SITE_TITLE}</title>
+          <meta name="description" content={SITE_DESCRIPTION} />
+          <meta name="keywords" content={SITE_KEYWORDS} />
+          <link rel="canonical" href={`${SITE_URL}/`} />
+          <meta property="og:title" content={SITE_TITLE} />
+          <meta property="og:description" content={SITE_DESCRIPTION} />
+          <meta property="og:url" content={`${SITE_URL}/`} />
+          <meta property="og:image" content={SITE_OG_IMAGE} />
+        </Head>
+      ) : null}
       <StatusBar style="dark" backgroundColor={FA_PAPER} translucent={false} />
       <Stack
         screenOptions={{
