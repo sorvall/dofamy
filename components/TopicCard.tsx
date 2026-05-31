@@ -111,7 +111,11 @@ function CardDoubleTapBody({
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest("[data-no-card-open]")) return;
+      if (
+        target.closest("[data-no-card-open], button, [role='button'], a, input, textarea, select")
+      ) {
+        return;
+      }
 
       const now = Date.now();
       if (now - lastTapRef.current < DOUBLE_TAP_MS) {
@@ -321,11 +325,12 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
         },
       ]}
     >
-      <CardDoubleTapBody
-        onDoubleOpen={handleDoubleOpen}
-        disabled={menuOpen}
-        className="px-4 pb-4 pt-4"
-      >
+      <View className="flex-row items-start gap-2 px-4 pb-4 pt-4">
+        <CardDoubleTapBody
+          onDoubleOpen={handleDoubleOpen}
+          disabled={menuOpen}
+          className="min-w-0 flex-1"
+        >
         {isDone ? (
           <>
             <LinearGradient
@@ -350,7 +355,6 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
               accessibilityRole="button"
               accessibilityLabel={isTimerRunning ? "Остановить и завершить задачу" : "Начать выполнение"}
               style={[styles.playBtn, isTimerRunning ? styles.stopBtn : null]}
-              {...({ dataSet: { noCardOpen: "true" } } as object)}
             >
               <MaterialIcons
                 name={isTimerRunning ? "stop" : "play-arrow"}
@@ -397,30 +401,6 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
               </View>
             ) : null}
           </View>
-          {!isDone ? (
-            <View style={styles.cardActions}>
-              <Pressable
-                onPress={openMenu}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Меню задачи"
-                style={styles.iconBtn}
-                {...({ dataSet: { noCardOpen: "true" } } as object)}
-              >
-                <MaterialIcons name="more-vert" size={18} color={INK} />
-              </Pressable>
-              <Pressable
-                onPress={openDeleteDialog}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Удалить план"
-                style={styles.iconBtnDanger}
-                {...({ dataSet: { noCardOpen: "true" } } as object)}
-              >
-                <MaterialIcons name="delete-outline" size={18} color="#993C1D" />
-              </Pressable>
-            </View>
-          ) : null}
         </View>
 
         <View className="mt-3 flex-row items-center justify-between gap-3 border-t border-line/80 pt-3">
@@ -451,7 +431,31 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
             style={{ backgroundColor: YELLOW }}
           />
         ) : null}
-      </CardDoubleTapBody>
+        </CardDoubleTapBody>
+
+        {!isDone ? (
+          <View style={styles.cardActions}>
+            <Pressable
+              onPress={openMenu}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Меню задачи"
+              style={styles.iconBtn}
+            >
+              <MaterialIcons name="more-vert" size={18} color={INK} />
+            </Pressable>
+            <Pressable
+              onPress={openDeleteDialog}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Удалить план"
+              style={styles.iconBtnDanger}
+            >
+              <MaterialIcons name="delete-outline" size={18} color="#993C1D" />
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
 
       {isDone ? (
         <View className="border-t border-line px-3.5 pb-4 pt-2">
@@ -477,14 +481,15 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           <Pressable
             accessibilityLabel="Закрыть меню"
             onPress={() => setMenuOpen(false)}
-            className="absolute inset-0 z-[15] rounded-card bg-black/25"
+            className="absolute inset-0 rounded-card bg-black/25"
+            style={styles.menuBackdrop}
           />
         ) : null}
         {menuOpen ? (
           <Animated.View
             entering={FadeIn.duration(160)}
-            className="absolute bottom-3 right-3 z-20 overflow-hidden rounded-2xl border border-line bg-white"
-            style={styles.popoverShadow}
+            className="absolute bottom-3 right-3 overflow-hidden rounded-2xl border border-line bg-white"
+            style={[styles.popoverShadow, styles.menuPopover]}
           >
             {!isDone ? (
               <>
@@ -626,7 +631,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginTop: 2,
-    marginLeft: 2,
+    marginLeft: 4,
+    zIndex: 12,
+  },
+  menuBackdrop: {
+    zIndex: 40,
+  },
+  menuPopover: {
+    zIndex: 50,
   },
   iconBtn: {
     width: 32,
