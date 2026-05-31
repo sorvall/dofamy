@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -23,6 +24,7 @@ import { buildDayReportTasksJson, fetchDayClosingReflection } from "../../lib/da
 import { transcribeAudio } from "../../lib/speechkit";
 import { userAlert } from "../../lib/userAlert";
 import { datePillRu, todayDateKey } from "../../lib/dateKey";
+import { useScrollReveal } from "../../lib/useScrollReveal";
 import { useSessionStore } from "../../stores/sessionStore";
 
 export default function TodayScreen() {
@@ -33,6 +35,7 @@ export default function TodayScreen() {
   const [reportBusy, setReportBusy] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportText, setReportText] = useState<string | null>(null);
+  const { onScroll: onScrollReveal, animatedStyle: reportBarStyle } = useScrollReveal();
 
   const onVoiceDone = useCallback(
     async (uri: string) => {
@@ -85,12 +88,13 @@ export default function TodayScreen() {
           style={Platform.OS === "web" ? { flex: 1, minHeight: 0 } : { flex: 1 }}
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom: 20,
+            paddingBottom: topics.length > 0 ? 28 : 20,
             paddingHorizontal: SCREEN_HORIZONTAL_PADDING,
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
+          onScroll={topics.length > 0 ? onScrollReveal : undefined}
         >
           <ScreenHeader
             title="Сегодня"
@@ -155,36 +159,29 @@ export default function TodayScreen() {
           )}
         </TouchScrollView>
 
-        <View
-          className="border-t border-line bg-paper pt-3 pb-2"
-          style={{ paddingHorizontal: SCREEN_HORIZONTAL_PADDING }}
-        >
-          <Pressable
-            onPress={() => void onDayReport()}
-            disabled={reportBusy || topics.length === 0}
-            className={`items-center justify-center rounded-[18px] py-3.5 ${
-              topics.length === 0 ? "bg-ink/35" : "bg-ink active:opacity-90"
-            } ${reportBusy ? "opacity-60" : ""}`}
-            style={{
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 6 },
-              shadowOpacity: 0.12,
-              shadowRadius: 14,
-              elevation: 4,
-            }}
+        {topics.length > 0 ? (
+          <Animated.View
+            pointerEvents="box-none"
+            style={[styles.reportBarWrap, reportBarStyle, { paddingHorizontal: SCREEN_HORIZONTAL_PADDING }]}
           >
-            {reportBusy ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text className="font-display text-sm lowercase tracking-tight text-white">
-                отчёт за день
-              </Text>
-            )}
-          </Pressable>
-          <Text className="mt-1.5 text-center font-sans text-[10px] leading-snug text-muted">
-            ИИ соберёт карточки за сегодня и напишет поддерживающий разбор.
-          </Text>
-        </View>
+            <Pressable
+              onPress={() => void onDayReport()}
+              disabled={reportBusy}
+              className={`items-center justify-center rounded-[18px] py-3 ${
+                reportBusy ? "opacity-60" : "bg-ink active:opacity-90"
+              }`}
+              style={styles.reportBarBtn}
+            >
+              {reportBusy ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text className="font-display text-sm lowercase tracking-tight text-white">
+                  отчёт за день
+                </Text>
+              )}
+            </Pressable>
+          </Animated.View>
+        ) : null}
       </View>
 
       <Modal
@@ -216,3 +213,24 @@ export default function TodayScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  reportBarWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: "rgba(245, 243, 238, 0.94)",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#E8E5DC",
+  },
+  reportBarBtn: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+});
