@@ -1,5 +1,12 @@
-import { useCallback, useRef, type UIEvent } from "react";
-import { StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps, type ViewStyle } from "react-native";
+import { useCallback, useEffect, useRef, type UIEvent } from "react";
+import {
+  StyleSheet,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ScrollViewProps,
+  type ViewStyle,
+} from "react-native";
 import type { ReactNode } from "react";
 
 type TouchScrollViewProps = ScrollViewProps & { children?: ReactNode };
@@ -12,16 +19,19 @@ export function TouchScrollView({
   style,
   contentContainerStyle,
   onScroll,
+  onLayout,
+  onContentSizeChange,
   scrollEventThrottle = 16,
 }: TouchScrollViewProps) {
   const outer = StyleSheet.flatten(style) as ViewStyle | undefined;
   const inner = StyleSheet.flatten(contentContainerStyle) as ViewStyle | undefined;
   const lastEmitRef = useRef(0);
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
 
-  const handleScroll = useCallback(
-    (e: UIEvent<HTMLDivElement>) => {
+  const emitScroll = useCallback(
+    (el: HTMLDivElement) => {
       if (!onScroll) return;
-      const el = e.currentTarget;
       const now = Date.now();
       if (scrollEventThrottle > 0 && now - lastEmitRef.current < scrollEventThrottle) {
         return;
@@ -39,8 +49,40 @@ export function TouchScrollView({
     [onScroll, scrollEventThrottle]
   );
 
+  const handleScroll = useCallback(
+    (e: UIEvent<HTMLDivElement>) => {
+      emitScroll(e.currentTarget);
+    },
+    [emitScroll]
+  );
+
+  useEffect(() => {
+    const outerEl = outerRef.current;
+    const innerEl = innerRef.current;
+    if (!outerEl) return;
+
+    const notifyLayout = () => {
+      onLayout?.({
+        nativeEvent: { layout: { x: 0, y: 0, width: outerEl.clientWidth, height: outerEl.clientHeight } },
+      } as LayoutChangeEvent);
+      if (innerEl && onContentSizeChange) {
+        onContentSizeChange(innerEl.scrollWidth, innerEl.scrollHeight);
+      }
+      emitScroll(outerEl);
+    };
+
+    notifyLayout();
+
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(notifyLayout) : null;
+    ro?.observe(outerEl);
+    if (innerEl) ro?.observe(innerEl);
+
+    return () => ro?.disconnect();
+  }, [emitScroll, onContentSizeChange, onLayout]);
+
   return (
     <div
+      ref={outerRef}
       onScroll={handleScroll}
       style={{
         flex: 1,
@@ -52,7 +94,9 @@ export function TouchScrollView({
         ...(outer as object),
       }}
     >
-      <div style={inner as object}>{children}</div>
+      <div ref={innerRef} style={inner as object}>
+        {children}
+      </div>
     </div>
   );
 }

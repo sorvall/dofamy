@@ -1,36 +1,60 @@
 import { useCallback, useRef } from "react";
-import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import type {
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+} from "react-native";
 import { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
-const SCROLL_DELTA = 8;
-const TOP_HIDE_Y = 20;
+const BOTTOM_THRESHOLD = 32;
 const ANIM_MS = 240;
 
-/** Показывает плашку при скролле вверх, скрывает при скролле вниз (и у верхнего края). */
+function isAtBottom(y: number, contentH: number, viewH: number) {
+  if (viewH <= 0 || contentH <= 0) return false;
+  const scrollable = contentH > viewH + 1;
+  return !scrollable || y + viewH >= contentH - BOTTOM_THRESHOLD;
+}
+
+/** Показывает плашку только когда список долистан до самого низа. */
 export function useScrollReveal() {
-  const lastY = useRef(0);
   const visible = useSharedValue(0);
+  const scrollY = useRef(0);
+  const viewH = useRef(0);
+  const contentH = useRef(0);
+
+  const sync = useCallback(() => {
+    const atBottom = isAtBottom(scrollY.current, contentH.current, viewH.current);
+    const next = atBottom ? 1 : 0;
+    if (visible.value !== next) {
+      visible.value = withTiming(next, { duration: ANIM_MS });
+    }
+  }, [visible]);
 
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y = e.nativeEvent.contentOffset.y;
-      const dy = y - lastY.current;
-      lastY.current = y;
-
-      if (y <= TOP_HIDE_Y) {
-        if (visible.value !== 0) {
-          visible.value = withTiming(0, { duration: ANIM_MS });
-        }
-        return;
-      }
-
-      if (dy > SCROLL_DELTA) {
-        visible.value = withTiming(0, { duration: ANIM_MS });
-      } else if (dy < -SCROLL_DELTA) {
-        visible.value = withTiming(1, { duration: ANIM_MS });
-      }
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      scrollY.current = contentOffset.y;
+      viewH.current = layoutMeasurement.height;
+      contentH.current = contentSize.height;
+      sync();
     },
-    [visible]
+    [sync]
+  );
+
+  const onLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      viewH.current = e.nativeEvent.layout.height;
+      sync();
+    },
+    [sync]
+  );
+
+  const onContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      contentH.current = h;
+      sync();
+    },
+    [sync]
   );
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -38,5 +62,5 @@ export function useScrollReveal() {
     transform: [{ translateY: (1 - visible.value) * 88 }],
   }));
 
-  return { onScroll, animatedStyle };
+  return { onScroll, onLayout, onContentSizeChange, animatedStyle };
 }

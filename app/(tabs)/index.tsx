@@ -35,7 +35,8 @@ export default function TodayScreen() {
   const [reportBusy, setReportBusy] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportText, setReportText] = useState<string | null>(null);
-  const { onScroll: onScrollReveal, animatedStyle: reportBarStyle } = useScrollReveal();
+  const { onScroll: onScrollReveal, onLayout: onScrollLayout, onContentSizeChange, animatedStyle: reportBarStyle } =
+    useScrollReveal();
 
   const onVoiceDone = useCallback(
     async (uri: string) => {
@@ -88,13 +89,15 @@ export default function TodayScreen() {
           style={Platform.OS === "web" ? { flex: 1, minHeight: 0 } : { flex: 1 }}
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom: topics.length > 0 ? 28 : 20,
+            paddingBottom: topics.length > 0 ? 88 : 20,
             paddingHorizontal: SCREEN_HORIZONTAL_PADDING,
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           onScroll={topics.length > 0 ? onScrollReveal : undefined}
+          onLayout={topics.length > 0 ? onScrollLayout : undefined}
+          onContentSizeChange={topics.length > 0 ? onContentSizeChange : undefined}
         >
           <ScreenHeader
             title="Сегодня"
