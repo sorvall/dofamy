@@ -67,6 +67,27 @@ function statusLabelRu(status: TopicStatus): string {
   }
 }
 
+function statusAccentColor(status: TopicStatus): string | null {
+  switch (status) {
+    case "done":
+      return SUCCESS;
+    case "in_progress":
+      return YELLOW;
+    default:
+      return null;
+  }
+}
+
+function statusBorderClass(status: TopicStatus): string {
+  switch (status) {
+    case "done":
+      return "border-success/35";
+    case "in_progress":
+      return "border-accent/45";
+    default:
+      return "border-line";
+  }
+}
 function statusPillClass(status: TopicStatus): string {
   switch (status) {
     case "done":
@@ -171,6 +192,8 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
   const beforeDone = Boolean(topic.beforePhotoUri);
   const afterDone = Boolean(topic.afterPhotoUri);
   const isDone = topic.status === "done";
+  const isInProgress = topic.status === "in_progress";
+  const accentColor = statusAccentColor(topic.status);
   const isTimerRunning = Boolean(topic.timingStartedAtMs);
   const boostText = topic.boost?.trim() ?? "";
   const timerTargetSec = topic.timerTargetSec;
@@ -314,17 +337,25 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
 
   const cardInner = (
     <Animated.View
-      className="overflow-hidden rounded-card bg-white"
+      className={`overflow-hidden rounded-card ${isDone ? "bg-success-light/30" : "bg-white"}`}
       style={[
         cardMotionStyle,
         styles.cardSurface,
+        isDone ? styles.cardSurfaceDone : null,
         {
-          shadowColor: "#000",
+          shadowColor: isDone ? SUCCESS : "#000",
           shadowOffset: { width: 0, height: 8 },
           borderRadius: 20,
         },
       ]}
     >
+      {accentColor ? (
+        <View
+          pointerEvents="none"
+          style={[styles.statusAccent, { backgroundColor: accentColor }]}
+        />
+      ) : null}
+
       <View className="flex-row items-start gap-2 px-4 pb-4 pt-4">
         <CardDoubleTapBody
           onDoubleOpen={handleDoubleOpen}
@@ -332,19 +363,14 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           className="min-w-0 flex-1"
         >
         {isDone ? (
-          <>
-            <LinearGradient
-              pointerEvents="none"
-              colors={["rgba(29, 158, 117, 0.12)", "rgba(255, 255, 255, 0.04)", "rgba(29, 158, 117, 0.08)"]}
-              locations={[0, 0.42, 1]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[StyleSheet.absoluteFillObject, styles.doneWash]}
-            />
-            <View pointerEvents="none" style={styles.doneBadge}>
-              <Text style={styles.doneBadgeText}>✓</Text>
-            </View>
-          </>
+          <LinearGradient
+            pointerEvents="none"
+            colors={["rgba(29, 158, 117, 0.14)", "rgba(255, 255, 255, 0)", "rgba(29, 158, 117, 0.1)"]}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[StyleSheet.absoluteFillObject, styles.doneWash]}
+          />
         ) : null}
 
         <View className="flex-row items-start gap-2.5">
@@ -364,25 +390,33 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
               />
             </Pressable>
           ) : (
-            <View className="mt-0.5 h-10 w-10 items-center justify-center rounded-full bg-success-light">
-              <Text style={{ fontSize: 14, color: SUCCESS, fontWeight: "800" }}>✓</Text>
+            <View style={styles.doneCheckBtn}>
+              <MaterialIcons name="check" size={22} color="#FFFFFF" />
             </View>
           )}
           <View
             className="h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl"
-            style={{ backgroundColor: emojiTileBg(index) }}
+            style={{
+              backgroundColor: isDone ? "rgba(29, 158, 117, 0.14)" : emojiTileBg(index),
+              opacity: isDone ? 0.85 : 1,
+            }}
           >
-            <TopicGlyph glyph={topic.emoji} color={INK} size={22} />
+            <TopicGlyph glyph={topic.emoji} color={isDone ? SUCCESS : INK} size={22} />
           </View>
           <View className="min-w-0 flex-1">
             <Text
-              className="font-display text-[15px] font-medium leading-5 text-ink"
-              style={{ letterSpacing: -0.2 }}
+              className={`font-display text-[15px] font-medium leading-5 ${
+                isDone ? "text-success-dark/75" : "text-ink"
+              }`}
+              style={isDone ? styles.doneTitle : { letterSpacing: -0.2 }}
               numberOfLines={2}
             >
               {topic.title}
             </Text>
-            <Text className="mt-0.5 font-sans text-[11px] leading-[15px] text-muted" numberOfLines={2}>
+            <Text
+              className={`mt-0.5 font-sans text-[11px] leading-[15px] ${isDone ? "text-muted/80" : "text-muted"}`}
+              numberOfLines={2}
+            >
               {topic.description}
             </Text>
             {isTimerRunning && boostText ? (
@@ -425,10 +459,17 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           </View>
         </View>
 
-        {topic.status === "in_progress" ? (
+        {isInProgress ? (
           <View
             className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-[20px]"
             style={{ backgroundColor: YELLOW }}
+          />
+        ) : null}
+        {isDone ? (
+          <View
+            pointerEvents="none"
+            className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-[20px]"
+            style={{ backgroundColor: SUCCESS }}
           />
         ) : null}
         </CardDoubleTapBody>
@@ -537,7 +578,7 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
           </Animated.View>
         ) : null}
 
-        <View className="overflow-hidden rounded-card border border-line bg-line">
+        <View className={`overflow-hidden rounded-card border bg-line ${statusBorderClass(topic.status)}`}>
         <View pointerEvents="none" className="absolute inset-0 flex-row overflow-hidden rounded-card bg-line">
           <Animated.View
             className="h-full items-center justify-center"
@@ -570,7 +611,37 @@ export function TopicCard({ topic, index, onPress }: TopicCardProps) {
 const styles = StyleSheet.create({
   cardSurface: {
     width: "100%",
-    backgroundColor: "#FFFFFF",
+  },
+  cardSurfaceDone: {
+    backgroundColor: "rgba(225, 245, 238, 0.45)",
+  },
+  statusAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
+  },
+  doneCheckBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: SUCCESS,
+    flexShrink: 0,
+    shadowColor: SUCCESS,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  doneTitle: {
+    letterSpacing: -0.2,
+    textDecorationLine: "line-through",
+    textDecorationColor: "rgba(8, 80, 65, 0.35)",
   },
   swipeHintLeft: {
     fontSize: 28,
@@ -609,22 +680,6 @@ const styles = StyleSheet.create({
   },
   doneWash: {
     borderRadius: 20,
-  },
-  doneBadge: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(29, 158, 117, 0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  doneBadgeText: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "rgba(8, 80, 65, 0.55)",
   },
   cardActions: {
     flexDirection: "column",
